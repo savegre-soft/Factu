@@ -30,8 +30,9 @@ services:
       # Persistencia en PostgreSQL
       PERSISTENCIA: prisma
       DATABASE_URL: postgresql://postgres:postgres@db:5432/factu?schema=public
-      # ⚠️ Cambia esta llave en un entorno real (cifra los certificados en reposo)
+      # ⚠️ Cambia estas llaves en un entorno real
       FACTU_MASTER_KEY: cambia-esta-llave-maestra
+      JWT_SECRET: cambia-este-secreto-jwt
       # Ambiente de pruebas de Hacienda (ajusta las URLs a las oficiales del sandbox)
       HACIENDA_ENV: stag
       HACIENDA_IDP_URL: https://idp.comprobanteselectronicos.go.cr/auth/realms/rut-stag/protocol/openid-connect/token

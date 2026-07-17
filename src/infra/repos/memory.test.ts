@@ -4,8 +4,8 @@ import { EmisorRepositoryMemoria, ComprobanteRepositoryMemoria } from "./memory.
 describe("EmisorRepositoryMemoria", () => {
   it("upsert crea y luego actualiza conservando createdAt", async () => {
     const repo = new EmisorRepositoryMemoria();
-    const creado = await repo.upsert({ cedula: "3101", nombre: "A" });
-    const actualizado = await repo.upsert({ cedula: "3101", nombre: "B" });
+    const creado = await repo.upsert({ cedula: "3101", tenantId: "t1", nombre: "A" });
+    const actualizado = await repo.upsert({ cedula: "3101", tenantId: "t1", nombre: "B" });
     expect(actualizado.nombre).toBe("B");
     expect(actualizado.createdAt).toEqual(creado.createdAt);
   });

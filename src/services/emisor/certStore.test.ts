@@ -15,7 +15,7 @@ describe("CertStore", () => {
   beforeEach(async () => {
     repo = new EmisorRepositoryMemoria();
     store = new CertStore(repo, KEY);
-    await repo.upsert({ cedula: "3101123456", nombre: "Empresa X" });
+    await repo.upsert({ cedula: "3101123456", tenantId: "t1", nombre: "Empresa X" });
   });
 
   it("guarda el .p12 cifrado y luego recupera un Certificado usable", async () => {

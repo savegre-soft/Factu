@@ -26,7 +26,8 @@ Emite comprobantes electrónicos **v4.4** de punta a punta — desde la clave ha
 | | |
 |---|---|
 | 🧮 **Clave y consecutivo** | Genera la clave numérica de 50 dígitos y el consecutivo de 20. |
-| 🔐 **Autenticación** | OAuth contra el IDP de Hacienda, con **renovación automática** de tokens. |
+| 👥 **Multi-tenant + roles** | Organizaciones aisladas, multiusuario y roles (admin / facturador / lector) con JWT. |
+| 🎫 **Sesión Hacienda** | OAuth contra el IDP de Hacienda, con **renovación automática** de tokens. |
 | 📄 **5 tipos de comprobante** | Factura, Tiquete, Nota de Crédito, Nota de Débito y Mensaje Receptor. |
 | ✍️ **Firma XAdES** | Firma enveloped **XAdES-BES / EPES** con el certificado `.p12` del emisor. |
 | 📤 **Envío y estado** | Envía a recepción y consulta el estado con *polling* (`aceptado`/`rechazado`). |
@@ -86,30 +87,36 @@ Inicializa la base y arranca todo.
 </tr>
 </table>
 
-> 🌐 **API:** http://localhost:3000 &nbsp;·&nbsp; 📖 **Documentación interactiva:** http://localhost:3000/docs
+> 🏠 **Inicio:** http://localhost:3000 &nbsp;·&nbsp; 📖 **Docs (Scalar):** http://localhost:3000/docs &nbsp;·&nbsp; 🧪 **Swagger:** http://localhost:3000/swagger
 
 ---
 
-## ⚡ Ejemplo en 3 pasos
+## ⚡ Ejemplo en 4 pasos
 
 ```bash
-# 1️⃣  Registrar emisor + subir su certificado
-curl -X POST http://localhost:3000/emisor \
+# 0️⃣  Crear organización + usuario admin  →  devuelve un JWT
+TOKEN=$(curl -s -X POST http://localhost:3000/auth/registro \
   -H "Content-Type: application/json" \
+  -d '{ "tenantNombre": "Mi Empresa", "email": "admin@miempresa.cr", "nombre": "Admin", "password": "unaClaveSegura" }' \
+  | node -e "process.stdin.on('data',d=>console.log(JSON.parse(d).token))")
+
+# 1️⃣  Registrar emisor + subir su certificado  (Authorization: Bearer $TOKEN)
+curl -X POST http://localhost:3000/emisor \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{ "cedula": "3101123456", "nombre": "Empresa X S.A." }'
 
 curl -X POST http://localhost:3000/emisor/3101123456/certificado \
-  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{ "p12Base64": "<.p12 en base64>", "password": "<PIN>" }'
 
-# 2️⃣  Autenticar contra el IDP de Hacienda
-curl -X POST http://localhost:3000/auth/login \
-  -H "Content-Type: application/json" \
+# 2️⃣  Autenticar el emisor contra el IDP de Hacienda
+curl -X POST http://localhost:3000/hacienda/login \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{ "emisor": "3101123456", "username": "<usuario>", "password": "<clave>" }'
 
 # 3️⃣  Emitir  (factura | tiquete | nota-credito | nota-debito)
 curl -X POST http://localhost:3000/comprobante/factura/enviar \
-  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{ "cedulaEmisor": "3101123456", "consecutivo": 1, "codigoActividadEmisor": "620100",
         "emisor": { "nombre": "Empresa X S.A.", "identificacion": { "tipo": "02", "numero": "3101123456" },
           "ubicacion": { "provincia": "1", "canton": "01", "distrito": "01", "otrasSenas": "Centro" },
@@ -128,18 +135,22 @@ curl -X POST http://localhost:3000/comprobante/factura/enviar \
 
 <table>
 <tr><th>Grupo</th><th>Endpoint</th><th>Descripción</th></tr>
-<tr><td rowspan="2">🛠️ Utilidades</td><td><code>GET /health</code></td><td>Estado del servicio</td></tr>
-<tr><td><code>POST /clave</code></td><td>Genera la clave de 50 dígitos</td></tr>
-<tr><td rowspan="3">🔐 Auth</td><td><code>POST /auth/login</code></td><td>Login en el IDP (cachea tokens)</td></tr>
-<tr><td><code>POST /auth/token</code></td><td>Access token válido (renueva)</td></tr>
-<tr><td><code>POST /auth/logout</code></td><td>Cierra sesión</td></tr>
-<tr><td rowspan="2">🏢 Emisores</td><td><code>POST /emisor</code></td><td>Registra / actualiza un emisor</td></tr>
+<tr><td rowspan="3">🔐 Autenticación</td><td><code>POST /auth/registro</code></td><td>Crea organización + admin → JWT</td></tr>
+<tr><td><code>POST /auth/login</code></td><td>Login de usuario → JWT</td></tr>
+<tr><td><code>GET·POST /auth/usuarios</code></td><td>Gestión de usuarios (admin)</td></tr>
+<tr><td rowspan="2">🎫 Hacienda</td><td><code>POST /hacienda/login</code></td><td>Sesión IDP del emisor (cachea tokens)</td></tr>
+<tr><td><code>POST /hacienda/token · /logout</code></td><td>Token / cierre de sesión</td></tr>
+<tr><td rowspan="3">🏢 Emisores</td><td><code>GET /emisor</code></td><td>Lista los emisores del tenant</td></tr>
+<tr><td><code>POST /emisor</code></td><td>Registra / actualiza un emisor</td></tr>
 <tr><td><code>POST /emisor/:cedula/certificado</code></td><td>Sube el <code>.p12</code> (cifrado)</td></tr>
 <tr><td rowspan="4">📄 Comprobantes</td><td><code>POST /comprobante/:tipo/enviar</code></td><td>Emite de punta a punta</td></tr>
 <tr><td><code>GET /comprobante/:clave</code></td><td>Consulta un comprobante</td></tr>
 <tr><td><code>POST /factura/xml</code></td><td>Genera el XML (sin firmar)</td></tr>
 <tr><td><code>POST /mensaje-receptor/xml</code></td><td>Aceptación / rechazo recibido</td></tr>
 </table>
+
+> 🔒 Todos los endpoints (salvo `/`, `/health`, `/auth/registro` y `/auth/login`) requieren
+> `Authorization: Bearer <JWT>`. Roles: **admin** · **facturador** · **lector**.
 
 <div align="right"><sub>Referencia completa e interactiva en <a href="http://localhost:3000/docs"><code>/docs</code></a> (Swagger)</sub></div>
 
@@ -182,7 +193,9 @@ src/
 | XML | **xmlbuilder2** |
 | Firma | **xadesjs** · **node-forge** (certificados `.p12`) |
 | Validación | **zod** + validación de dominio |
-| Tests | **Vitest** (86 tests) |
+| Auth | **@fastify/jwt** · scrypt (multi-tenant + roles) |
+| Docs | **Scalar** · **Swagger UI** · OpenAPI |
+| Tests | **Vitest** (96 tests) |
 
 </div>
 
@@ -210,14 +223,15 @@ src/
 - [x] **6.** Todos los documentos (Factura, Tiquete, Notas, Mensaje Receptor)
 - [x] **7.** Persistencia (memoria + Prisma) + certificados cifrados
 - [x] **8.** Validación de negocio + XAdES-EPES configurable
-- [x] **9.** Swagger, documentación, GitHub Actions y Docker
+- [x] **9.** Scalar + Swagger, documentación, GitHub Actions y Docker
+- [x] **10.** Control de acceso: multi-tenant, usuarios y roles con JWT
 
 ### 🔜 Pendiente para producción
 
 > - 🔑 Datos oficiales de la **política de firma** (`HACIENDA_POLICY_URL` + `HACIENDA_POLICY_HASH`) para XAdES-EPES
 > - 📐 Validación contra el **XSD oficial** v4.4
 > - 🌐 **URLs oficiales** del IDP/recepción y pruebas contra el sandbox real
-> - 👥 Para exponerlo a **varios clientes**: capa de autenticación de la API y gestión de consecutivos
+> - 🔢 **Gestión de consecutivos** por emisor (hoy los envía el cliente)
 
 ---
 

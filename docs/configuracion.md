@@ -22,6 +22,8 @@ Copia `.env.example` a `.env` y complétalas.
 | Variable | Requerida | Descripción |
 |---|---|---|
 | `FACTU_MASTER_KEY` | **sí en producción** | Llave maestra para cifrar los `.p12` en reposo (AES-256-GCM). En desarrollo usa una llave insegura por defecto y avisa. |
+| `JWT_SECRET` | **sí en producción** | Secreto para firmar los JWT de sesión de usuario. En desarrollo usa un secreto inseguro por defecto y avisa. |
+| `JWT_EXPIRES_IN` | no | Vigencia del token de usuario (ej. `8h`, `7d`). Por defecto `8h`. |
 
 ## Hacienda
 

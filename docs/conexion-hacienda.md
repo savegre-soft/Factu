@@ -33,12 +33,31 @@ FACTU_MASTER_KEY="<llave aleatoria para cifrar los .p12 en reposo>"
 > Las URLs exactas del IDP y de recepción las publica Hacienda en su documentación
 > técnica oficial. Las de `.env.example` son de referencia y **debes confirmarlas**.
 
-## 3. El flujo, paso a paso
+## 3. Control de acceso (multi-tenant)
+
+La API es multiusuario: primero creas tu **organización (tenant)** y un usuario, y todas
+las peticiones (salvo registro/login) van autenticadas con un **JWT** en la cabecera
+`Authorization: Bearer <token>`. Ver [control de acceso](./api.md#control-de-acceso) para
+roles y permisos.
+
+```bash
+# Crear organización + usuario admin (devuelve el token)
+curl -X POST http://localhost:3000/auth/registro \
+  -H "Content-Type: application/json" \
+  -d '{ "tenantNombre": "Mi Empresa", "email": "admin@miempresa.cr", "nombre": "Admin", "password": "unaClaveSegura" }'
+# → { "token": "eyJ...", "usuario": { ... } }
+
+# (o, si ya tienes usuario)  POST /auth/login  → { "token": "..." }
+
+export TOKEN="eyJ..."   # usa el token en las siguientes llamadas
+```
+
+## 4. El flujo, paso a paso
 
 ```
 ┌──────────────┐   ┌─────────────────┐   ┌───────────┐   ┌───────────────────┐
 │ 1. Registrar │ → │ 2. Subir cert   │ → │ 3. Login  │ → │ 4. Emitir         │
-│    emisor    │   │    .p12 (cifra) │   │   (IDP)   │   │  (firma + envío)  │
+│    emisor    │   │    .p12 (cifra) │   │ (Hacienda)│   │  (firma + envío)  │
 └──────────────┘   └─────────────────┘   └───────────┘   └───────────────────┘
                                                                    │
                                                           ┌────────▼────────┐
@@ -47,18 +66,17 @@ FACTU_MASTER_KEY="<llave aleatoria para cifrar los .p12 en reposo>"
                                                           └─────────────────┘
 ```
 
-Internamente, el paso 4 hace: **generar clave (50 díg.) → generar XML v4.4 →
-firmar XAdES → codificar en base64 → `POST /recepcion` → consultar estado**.
+> Todas las llamadas llevan `-H "Authorization: Bearer $TOKEN"`.
 
-### Paso 1 — Registrar el emisor
+### Paso 1 — Registrar el emisor  *(rol admin)*
 
 ```bash
 curl -X POST http://localhost:3000/emisor \
-  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{ "cedula": "3101123456", "nombre": "Empresa X S.A." }'
 ```
 
-### Paso 2 — Subir el certificado `.p12`
+### Paso 2 — Subir el certificado `.p12`  *(rol admin)*
 
 El `.p12` se envía en **base64** y se guarda **cifrado en reposo** (AES-256-GCM).
 Factu valida el `.p12` y el PIN al recibirlo.
@@ -69,7 +87,7 @@ Factu valida el `.p12` y el PIN al recibirlo.
 #   PowerShell:   [Convert]::ToBase64String([IO.File]::ReadAllBytes("certificado.p12"))
 
 curl -X POST http://localhost:3000/emisor/3101123456/certificado \
-  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{ "p12Base64": "<...base64...>", "password": "<PIN del .p12>" }'
 ```
 
@@ -77,23 +95,23 @@ curl -X POST http://localhost:3000/emisor/3101123456/certificado \
 > de prueba** y lo indica en la respuesta (`certificadoDemo: true`). Hacienda solo
 > acepta el certificado real, así que en producción este paso es obligatorio.
 
-### Paso 3 — Autenticarse (IDP de Hacienda)
+### Paso 3 — Autenticarse ante el IDP de Hacienda  *(rol facturador+)*
 
-Guarda los tokens bajo la cédula del emisor. Factu los **renueva automáticamente**.
+Guarda los tokens de Hacienda bajo la cédula del emisor. Factu los **renueva automáticamente**.
 
 ```bash
-curl -X POST http://localhost:3000/auth/login \
-  -H "Content-Type: application/json" \
+curl -X POST http://localhost:3000/hacienda/login \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{ "emisor": "3101123456", "username": "<usuario Hacienda>", "password": "<clave Hacienda>" }'
 ```
 
-### Paso 4 — Emitir el comprobante
+### Paso 4 — Emitir el comprobante  *(rol facturador+)*
 
 El tipo va en la ruta: `factura`, `tiquete`, `nota-credito` o `nota-debito`.
 
 ```bash
 curl -X POST http://localhost:3000/comprobante/factura/enviar \
-  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{
     "cedulaEmisor": "3101123456",
     "consecutivo": 1,

@@ -235,9 +235,16 @@ export const haciendaEmisorSchema = {
   },
 } as const;
 
+export const emisorListarSchema = {
+  tags: ["Emisores"],
+  summary: "Lista los emisores de tu organización",
+  security: bearer,
+} as const;
+
 export const emisorRegistrarSchema = {
   tags: ["Emisores"],
-  summary: "Registra o actualiza un emisor",
+  summary: "Registra o actualiza un emisor (solo admin)",
+  security: bearer,
   body: {
     type: "object",
     properties: { cedula: { type: "string" }, nombre: { type: "string" } },
@@ -248,6 +255,7 @@ export const emisorRegistrarSchema = {
 export const emisorCertificadoSchema = {
   tags: ["Emisores"],
   summary: "Sube el certificado .p12 del emisor (se guarda cifrado en reposo)",
+  security: bearer,
   params: {
     type: "object",
     properties: { cedula: { type: "string" } },
@@ -273,7 +281,8 @@ export const comprobanteEnviarSchema = {
   tags: ["Comprobantes"],
   summary: "Emite un comprobante de punta a punta (clave → XML → firma → envío → estado)",
   description:
-    "Requiere /auth/login previo para el emisor. Firma con el certificado real del emisor si está cargado; si no, con uno de prueba (`certificadoDemo: true`).",
+    "Requiere JWT con permiso de emisión y sesión de Hacienda del emisor (POST /hacienda/login). Firma con el certificado real del emisor si está cargado; si no, con uno de prueba (`certificadoDemo: true`).",
+  security: bearer,
   params: {
     type: "object",
     properties: {
@@ -287,6 +296,7 @@ export const comprobanteEnviarSchema = {
 export const comprobanteGetSchema = {
   tags: ["Comprobantes"],
   summary: "Consulta un comprobante persistido por su clave",
+  security: bearer,
   params: {
     type: "object",
     properties: { clave: { type: "string" } },

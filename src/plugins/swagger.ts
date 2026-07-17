@@ -4,6 +4,7 @@
 import type { FastifyInstance } from "fastify";
 import fastifySwagger from "@fastify/swagger";
 import fastifySwaggerUi from "@fastify/swagger-ui";
+import scalarApiReference from "@scalar/fastify-api-reference";
 
 export function registrarSwagger(app: FastifyInstance): void {
   app.register(fastifySwagger, {
@@ -37,8 +38,19 @@ export function registrarSwagger(app: FastifyInstance): void {
     },
   });
 
+  // UI clásica de Swagger (queda en /swagger)
   app.register(fastifySwaggerUi, {
-    routePrefix: "/docs",
+    routePrefix: "/swagger",
     uiConfig: { docExpansion: "list", deepLinking: true },
+  });
+
+  // UI moderna (Scalar) como documentación principal en /docs
+  app.register(scalarApiReference, {
+    routePrefix: "/docs",
+    configuration: {
+      url: "/swagger/json",
+      theme: "purple",
+      metaData: { title: "Factu · API de facturación electrónica CR" },
+    },
   });
 }

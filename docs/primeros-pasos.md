@@ -35,7 +35,15 @@ curl http://localhost:3000/health
 # {"status":"ok","service":"factu"}
 ```
 
-Abre `http://localhost:3000/docs` para explorar y probar los endpoints desde el navegador.
+En el navegador:
+
+- `http://localhost:3000/` — página de inicio
+- `http://localhost:3000/docs` — documentación interactiva (Scalar)
+- `http://localhost:3000/swagger` — Swagger UI clásico
+
+> Casi todos los endpoints requieren autenticación: crea tu organización con
+> `POST /auth/registro`, copia el `token` y úsalo como `Authorization: Bearer <token>`.
+> En Scalar/Swagger, pégalo en el botón **Authorize**.
 
 ## Comandos útiles
 
