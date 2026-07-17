@@ -15,10 +15,16 @@ API de **facturación electrónica** para el Ministerio de Hacienda de Costa Ric
 
 ```bash
 npm install
-cp .env.example .env      # completa DATABASE_URL y los endpoints de Hacienda
+cp .env.example .env      # completa los endpoints de Hacienda y FACTU_MASTER_KEY
+npm run dev               # servidor en http://localhost:3000
+```
+
+Por defecto la persistencia es **en memoria** (no requiere base de datos). Para usar
+PostgreSQL, pon `PERSISTENCIA=prisma` y `DATABASE_URL` en `.env`, y ejecuta:
+
+```bash
 npm run prisma:generate
 npm run prisma:migrate    # requiere PostgreSQL corriendo
-npm run dev               # servidor en http://localhost:3000
 ```
 
 Prueba rápida:
@@ -82,9 +88,12 @@ src/
     clave/       Generación de clave numérica (50 díg.) y consecutivo (20 díg.)
     factura/     Modelo, totales y generador de XML v4.4 (Factura/Tiquete/Notas)
     mensajeReceptor/  Generador del XML de Mensaje Receptor
-  routes/        Endpoints HTTP: /clave, /auth/*, /factura/xml, /firma/demo,
-                 /comprobante/:tipo/enviar, /mensaje-receptor/xml
-  services/      auth/ (IDP), firma/ (certificados + XAdES), hacienda/ (recepción + emisión)
+    validacion/  Validación de reglas de negocio previa al envío
+  routes/        Endpoints HTTP: /clave, /auth/*, /emisor/*, /factura/xml, /firma/demo,
+                 /comprobante/:tipo/enviar, /comprobante/:clave, /mensaje-receptor/xml
+  services/      auth/ (IDP), firma/ (certificados + XAdES),
+                 hacienda/ (recepción + emisión), emisor/ (almacén de certificados)
+  infra/         crypto/ (cifrado en reposo), repos/ (persistencia: memoria + Prisma)
   infra/         (próximamente) cliente Prisma, cliente HTTP de Hacienda
 prisma/
   schema.prisma  Modelo de datos
@@ -98,9 +107,24 @@ prisma/
 - [x] **4. Firma XAdES-BES** — carga de `.p12` (o certificado autofirmado de prueba) y firma XAdES enveloped verificable (SigningTime + SigningCertificate)
 - [x] **5. Envío y consulta** — sobre de recepción (base64), cliente `POST /recepcion` + consulta de estado con polling, y orquestador de emisión de punta a punta (`clave → XML → firma → envío → estado`)
 - [x] **6. Documentos restantes** — generador de XML generalizado (Factura, Tiquete, Notas de Crédito/Débito con `InformacionReferencia`) y Mensaje Receptor (aceptación/rechazo de comprobantes recibidos)
+- [x] **7. Persistencia y certificados** — repositorios (memoria + Prisma) para emisores y comprobantes, y gestión de certificados `.p12` **cifrados en reposo** (AES-256-GCM); la emisión usa el certificado real del emisor y persiste cada comprobante con su estado
+- [x] **8. Validación y XAdES-EPES** — capa de validación de reglas de negocio (formatos, receptor/plazo/moneda, referencias en notas) que falla antes de enviar, y firma **XAdES-EPES** con política de Hacienda configurable
+
+Registrar un emisor y subir su certificado `.p12` (se guarda **cifrado** en reposo):
+
+```bash
+curl -X POST http://localhost:3000/emisor \
+  -H "Content-Type: application/json" \
+  -d '{ "cedula": "3101123456", "nombre": "Empresa X S.A." }'
+
+curl -X POST http://localhost:3000/emisor/3101123456/certificado \
+  -H "Content-Type: application/json" \
+  -d '{ "p12Base64": "<contenido del .p12 en base64>", "password": "<PIN del .p12>" }'
+```
 
 Emitir un comprobante de punta a punta (requiere `/auth/login` previo y `HACIENDA_API_URL`).
-El tipo va en la ruta: `factura`, `tiquete`, `nota-credito` o `nota-debito`:
+El tipo va en la ruta: `factura`, `tiquete`, `nota-credito` o `nota-debito`. Si el emisor
+tiene certificado cargado se firma con él; si no, con uno de prueba (`certificadoDemo: true`):
 
 ```bash
 curl -X POST http://localhost:3000/comprobante/factura/enviar \
@@ -143,13 +167,25 @@ curl -X POST http://localhost:3000/mensaje-receptor/xml \
 # mensaje: 1=aceptado, 2=aceptado parcial, 3=rechazado
 ```
 
-### Nota sobre la firma (hito 4)
+### Validación (hito 8)
 
-La firma actual es **XAdES-BES** (incluye `SigningTime` y `SigningCertificate`). Hacienda
-exige el perfil **XAdES-EPES**, que añade una `SignaturePolicyIdentifier` con el OID/URL de
-la política de resolución vigente. El firmador ya soporta pasarla (`opts.policy` de xadesjs);
-falta el dato oficial. La ruta `/firma/demo` usa un certificado **autofirmado de prueba**;
-en producción se usará el `.p12` real del emisor.
+Hay dos capas antes de enviar a Hacienda:
+1. **zod** en las rutas — valida estructura y tipos de la entrada.
+2. **Validación de dominio** (`src/domain/validacion`) — reglas de negocio: largo de la
+   identificación según el tipo, receptor obligatorio salvo tiquete, plazo de crédito,
+   tipo de cambio si la moneda no es CRC, referencia obligatoria en notas, descuentos que no
+   superen el monto, tarifas 0–100, CABYS de 13 dígitos, etc. Si algo falla, `/comprobante/:tipo/enviar`
+   responde `400` con la lista de `errores` **sin** firmar ni enviar.
+
+### Nota sobre la firma (hitos 4 y 8)
+
+La firma es **XAdES-EPES** cuando se configuran `HACIENDA_POLICY_URL` y `HACIENDA_POLICY_HASH`
+(la política de la resolución vigente v4.4 y su digest SHA-256); si no, cae a **XAdES-BES**.
+Incluye `SigningTime` y `SigningCertificate`. La ruta `/firma/demo` usa un certificado
+**autofirmado de prueba**; en producción se usa el `.p12` real del emisor (subido vía `/emisor/:cedula/certificado`).
+
+> Pendiente para producción: obtener la URL y el digest oficiales de la política de firma, y
+> validar el XML contra el **XSD oficial** de Hacienda (requiere los archivos de esquema).
 
 > ⚠️ Prueba **siempre** contra el ambiente de sandbox/staging de Hacienda antes de producción.
 > Nunca subas certificados `.p12`, llaves ni PINs al repositorio (ya están en `.gitignore`).

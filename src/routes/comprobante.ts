@@ -2,11 +2,12 @@ import type { FastifyInstance } from "fastify";
 import { datosFacturaSchema } from "./factura.js";
 import { tokenStore } from "../services/auth/index.js";
 import { receptionClient, emitirComprobante } from "../services/hacienda/index.js";
-import { firmarXadesBes } from "../services/firma/xadesSigner.js";
+import { firmar } from "../services/firma/index.js";
 import { generarP12Autofirmado, type Certificado } from "../services/firma/certificado.js";
 import { certStore } from "../services/emisor/index.js";
 import { comprobanteRepository } from "../infra/repos/index.js";
 import { TipoDocumento } from "../domain/factura/facturaXml.js";
+import { validarComprobante } from "../domain/validacion/validacion.js";
 import type { DatosFactura } from "../services/hacienda/emision.js";
 
 /** Mapea el segmento de la ruta al tipo de documento. */
@@ -44,6 +45,12 @@ export async function comprobanteRoutes(app: FastifyInstance): Promise<void> {
     }
     const datos = parsed.data as DatosFactura;
 
+    // Validación de reglas de negocio antes de firmar/enviar (falla temprano).
+    const errores = validarComprobante(tipo, datos);
+    if (errores.length > 0) {
+      return reply.status(400).send({ error: "Comprobante inválido", errores });
+    }
+
     // Usa el certificado real del emisor si está cargado; si no, cae a uno
     // autofirmado de PRUEBA (marcado en la respuesta).
     let certificado: Certificado;
@@ -62,7 +69,7 @@ export async function comprobanteRoutes(app: FastifyInstance): Promise<void> {
     try {
       const result = await emitirComprobante(tipo, datos, {
         obtenerToken: () => tokenStore.getAccessToken(datos.cedulaEmisor),
-        firmar: firmarXadesBes,
+        firmar,
         cliente: receptionClient,
         certificado,
       });

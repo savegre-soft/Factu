@@ -11,6 +11,10 @@ const schema = z.object({
   HACIENDA_CLIENT_ID: z.string().optional(),
   /** Llave maestra para cifrar certificados en reposo. En producción es OBLIGATORIA. */
   FACTU_MASTER_KEY: z.string().optional(),
+  /** URL de la política de firma de Hacienda (XAdES-EPES). */
+  HACIENDA_POLICY_URL: z.string().url().optional(),
+  /** Digest SHA-256 (base64) del documento de la política de firma. */
+  HACIENDA_POLICY_HASH: z.string().optional(),
   /** Backend de persistencia: "memoria" (por defecto) o "prisma". */
   PERSISTENCIA: z.enum(["memoria", "prisma"]).default("memoria"),
 });

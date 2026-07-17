@@ -70,4 +70,16 @@ describe("firmarXadesBes", () => {
   it("verificarFirma devuelve false si no hay firma", async () => {
     expect(await verificarFirma("<Root/>")).toBe(false);
   });
+
+  it("con política produce XAdES-EPES (SignaturePolicyIdentifier) y verifica", async () => {
+    const firmado = await firmarXadesBes("<Root><A>hola</A></Root>", certificado, {
+      policy: {
+        url: "https://www.hacienda.go.cr/politica-firma-v4.4.pdf",
+        digestBase64: "iYQe6WW0vTbBLA5V3ydfxg5S3LrJ8f5rHqU2q0m7abc=",
+      },
+    });
+    expect(firmado).toContain("SignaturePolicyIdentifier");
+    expect(firmado).toContain("SigPolicyId");
+    expect(await verificarFirma(firmado)).toBe(true);
+  });
 });

@@ -35,11 +35,24 @@ const SIGN_ALG: RsaHashedImportParams & { name: string } = {
   hash: "SHA-256",
 };
 
+export interface PoliticaFirma {
+  /** URL identificadora de la política (SigPolicyId). */
+  url: string;
+  /** Digest SHA-256 del documento de la política, en base64 (SigPolicyHash). */
+  digestBase64: string;
+  description?: string;
+}
+
 export interface FirmaOpts {
   /** Lugar de producción (opcional; aparece en las propiedades firmadas). */
   productionPlace?: { country?: string; state?: string; city?: string; code?: string };
   /** Rol declarado del firmante (opcional). */
   signerRole?: string[];
+  /**
+   * Política de firma (XAdES-EPES). Si se proporciona, la firma pasa de BES a
+   * EPES incluyendo la SignaturePolicyIdentifier que exige Hacienda.
+   */
+  policy?: PoliticaFirma;
 }
 
 /** Importa la llave privada PEM (PKCS#8) como CryptoKey para firmar. */
@@ -65,6 +78,20 @@ export async function firmarXadesBes(
     signingCertificate: certificado.certificateDerBase64,
     productionPlace: opts.productionPlace,
     signerRole: opts.signerRole ? { claimed: opts.signerRole } : undefined,
+    policy: opts.policy
+      ? {
+          hash: "SHA-256",
+          identifier: {
+            qualifier: "OIDAsURI",
+            value: opts.policy.url,
+            description: opts.policy.description,
+          },
+          // Digest del documento de la política (no lo calcula xadesjs solo).
+          digestValue: opts.policy.digestBase64,
+          // Nota: se omite el SPURI (qualifiers) porque xadesjs no lo re-parsea
+          // al verificar; SigPolicyId + SigPolicyHash son el núcleo de XAdES-EPES.
+        }
+      : undefined,
   });
 
   const signatureXml = signed.GetXml();
