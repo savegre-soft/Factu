@@ -48,7 +48,7 @@ const lineaSchema = z.object({
     .optional(),
 });
 
-const bodySchema = z.object({
+export const datosFacturaSchema = z.object({
   // Datos para generar la clave (hito 1)
   cedulaEmisor: z.string().regex(/^\d+$/),
   sucursal: z.number().int().nonnegative().default(1),
@@ -83,11 +83,22 @@ const bodySchema = z.object({
   mediosPago: z
     .array(z.object({ tipo: z.nativeEnum(TipoMedioPago), monto: z.number().optional() }))
     .optional(),
+  informacionReferencia: z
+    .array(
+      z.object({
+        tipoDoc: z.string(),
+        numero: z.string(),
+        fechaEmision: z.coerce.date(),
+        codigo: z.string(),
+        razon: z.string(),
+      }),
+    )
+    .optional(),
 });
 
 export async function facturaRoutes(app: FastifyInstance): Promise<void> {
   app.post("/factura/xml", async (request, reply) => {
-    const parsed = bodySchema.safeParse(request.body);
+    const parsed = datosFacturaSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: "Entrada inválida", detalles: parsed.error.issues });
     }

@@ -5,6 +5,8 @@ import { claveRoutes } from "./routes/clave.js";
 import { authRoutes } from "./routes/auth.js";
 import { facturaRoutes } from "./routes/factura.js";
 import { firmaRoutes } from "./routes/firma.js";
+import { comprobanteRoutes } from "./routes/comprobante.js";
+import { mensajeReceptorRoutes } from "./routes/mensajeReceptor.js";
 
 export function buildServer() {
   const app = Fastify({ logger: true });
@@ -13,6 +15,8 @@ export function buildServer() {
   app.register(authRoutes);
   app.register(facturaRoutes);
   app.register(firmaRoutes);
+  app.register(comprobanteRoutes);
+  app.register(mensajeReceptorRoutes);
   return app;
 }
 

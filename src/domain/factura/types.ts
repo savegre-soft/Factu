@@ -129,6 +129,42 @@ export interface Moneda {
   tipoCambio?: number;
 }
 
+/** Tipo del documento referenciado (para notas de crédito/débito). */
+export enum TipoDocReferencia {
+  FacturaElectronica = "01",
+  NotaDespachoElectronica = "02",
+  TiqueteElectronico = "04",
+  NotaDespacho = "05",
+  ComprobanteContingencia = "08",
+  Otro = "99",
+}
+
+/** Razón/código de la referencia. */
+export enum CodigoReferencia {
+  /** Anula el documento de referencia. */
+  AnulaDocumento = "01",
+  /** Corrige el monto. */
+  CorrigeMonto = "02",
+  /** Referencia a otro documento. */
+  ReferenciaOtroDocumento = "04",
+  /** Sustituye comprobante provisional por contingencia. */
+  SustituyeComprobanteContingencia = "05",
+  Otros = "99",
+}
+
+/**
+ * Información de referencia a un documento previo. Obligatoria en notas de
+ * crédito y débito (identifica qué documento se corrige/anula y por qué).
+ */
+export interface InformacionReferencia {
+  tipoDoc: TipoDocReferencia | string;
+  /** Clave de 50 dígitos del documento referenciado. */
+  numero: string;
+  fechaEmision: Date;
+  codigo: CodigoReferencia | string;
+  razon: string;
+}
+
 export interface FacturaInput {
   /** Clave numérica de 50 dígitos (generada en el hito 1). */
   clave: string;
@@ -147,4 +183,6 @@ export interface FacturaInput {
   moneda?: Moneda;
   lineas: LineaDetalle[];
   mediosPago?: MedioPago[];
+  /** Referencias a documentos previos (obligatorio en notas de crédito/débito). */
+  informacionReferencia?: InformacionReferencia[];
 }

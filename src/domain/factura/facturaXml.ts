@@ -11,6 +11,7 @@ import { create } from "xmlbuilder2";
 import type {
   Emisor,
   FacturaInput,
+  InformacionReferencia,
   MedioPago,
   Receptor,
   Telefono,
@@ -19,8 +20,47 @@ import type {
 import { calcularTotales, type LineaCalculada } from "./totales.js";
 import { TipoMedioPago } from "./types.js";
 
-const NS_FE =
-  "https://cdn.comprobanteselectronicos.go.cr/xml-schemas/v4.4/facturaElectronica";
+/** Tipos de comprobante que comparten esta misma estructura de XML. */
+export enum TipoDocumento {
+  FacturaElectronica = "FE",
+  TiqueteElectronico = "TE",
+  NotaCredito = "NC",
+  NotaDebito = "ND",
+}
+
+interface DocumentoMeta {
+  /** Nombre del elemento raíz. */
+  root: string;
+  /** Segmento del namespace (último tramo de la URL del XSD v4.4). */
+  nsSegment: string;
+  /** Si exige InformacionReferencia (notas de crédito/débito). */
+  requiereReferencia: boolean;
+}
+
+const DOCUMENTOS: Record<TipoDocumento, DocumentoMeta> = {
+  [TipoDocumento.FacturaElectronica]: {
+    root: "FacturaElectronica",
+    nsSegment: "facturaElectronica",
+    requiereReferencia: false,
+  },
+  [TipoDocumento.TiqueteElectronico]: {
+    root: "TiqueteElectronico",
+    nsSegment: "tiqueteElectronico",
+    requiereReferencia: false,
+  },
+  [TipoDocumento.NotaCredito]: {
+    root: "NotaCreditoElectronica",
+    nsSegment: "notaCreditoElectronica",
+    requiereReferencia: true,
+  },
+  [TipoDocumento.NotaDebito]: {
+    root: "NotaDebitoElectronica",
+    nsSegment: "notaDebitoElectronica",
+    requiereReferencia: true,
+  },
+};
+
+const NS_BASE = "https://cdn.comprobanteselectronicos.go.cr/xml-schemas/v4.4";
 const NS_XSI = "http://www.w3.org/2001/XMLSchema-instance";
 const NS_DS = "http://www.w3.org/2000/09/xmldsig#";
 
@@ -168,13 +208,37 @@ function addResumen(
   node.ele("TotalComprobante").txt(money(resumen.totalComprobante));
 }
 
-/** Genera el XML (sin firmar) de la Factura Electrónica v4.4. */
-export function generarFacturaXml(factura: FacturaInput): string {
+function addInformacionReferencia(root: XmlNode, refs: InformacionReferencia[]): void {
+  for (const ref of refs) {
+    const node = root.ele("InformacionReferencia");
+    node.ele("TipoDoc").txt(ref.tipoDoc);
+    node.ele("Numero").txt(ref.numero);
+    node.ele("FechaEmision").txt(fechaEmisionISO(ref.fechaEmision));
+    node.ele("Codigo").txt(ref.codigo);
+    node.ele("Razon").txt(ref.razon);
+  }
+}
+
+/**
+ * Genera el XML (sin firmar) de un comprobante electrónico v4.4. Cubre factura,
+ * tiquete y notas de crédito/débito, que comparten la misma estructura salvo el
+ * elemento raíz, el namespace y la InformacionReferencia (obligatoria en notas).
+ */
+export function generarComprobanteXml(
+  tipo: TipoDocumento,
+  factura: FacturaInput,
+): string {
+  const meta = DOCUMENTOS[tipo];
+  const refs = factura.informacionReferencia ?? [];
+  if (meta.requiereReferencia && refs.length === 0) {
+    throw new Error(`${meta.root} requiere al menos una InformacionReferencia`);
+  }
+
   const totales = calcularTotales(factura);
   const fecha = factura.fechaEmision ?? new Date();
 
-  const root = create({ version: "1.0", encoding: "UTF-8" }).ele("FacturaElectronica", {
-    xmlns: NS_FE,
+  const root = create({ version: "1.0", encoding: "UTF-8" }).ele(meta.root, {
+    xmlns: `${NS_BASE}/${meta.nsSegment}`,
     "xmlns:xsi": NS_XSI,
     "xmlns:ds": NS_DS,
   });
@@ -197,5 +261,12 @@ export function generarFacturaXml(factura: FacturaInput): string {
 
   addResumen(root, factura, totales);
 
+  if (refs.length > 0) addInformacionReferencia(root, refs);
+
   return root.end({ prettyPrint: true });
+}
+
+/** Genera el XML (sin firmar) de la Factura Electrónica v4.4. */
+export function generarFacturaXml(factura: FacturaInput): string {
+  return generarComprobanteXml(TipoDocumento.FacturaElectronica, factura);
 }
