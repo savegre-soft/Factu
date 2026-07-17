@@ -81,8 +81,8 @@ src/
   domain/        Lógica de negocio pura, sin dependencias de infraestructura
     clave/       Generación de clave numérica (50 díg.) y consecutivo (20 díg.)
     factura/     Modelo, cálculo de totales y generación del XML v4.4
-  routes/        Endpoints HTTP (Fastify): /clave, /auth/*, /factura/xml
-  services/      auth/ (Hacienda IDP); próximamente firma y envío
+  routes/        Endpoints HTTP (Fastify): /clave, /auth/*, /factura/xml, /firma/demo
+  services/      auth/ (Hacienda IDP), firma/ (certificados + XAdES); próximamente envío
   infra/         (próximamente) cliente Prisma, cliente HTTP de Hacienda
 prisma/
   schema.prisma  Modelo de datos
@@ -93,9 +93,17 @@ prisma/
 - [x] **1. Clave numérica** — generador de clave de 50 dígitos + consecutivo (con tests)
 - [x] **2. Autenticación** — OAuth contra el IDP de Hacienda (login/refresh/logout) + gestor de tokens con renovación automática
 - [x] **3. Generación de XML** — Factura Electrónica v4.4: modelo de dominio, cálculo de totales (gravado/exento, desglose de impuestos) y generación del XML sin firmar
-- [ ] **4. Firma XAdES-BES** — firmar el XML con el certificado `.p12`
+- [x] **4. Firma XAdES-BES** — carga de `.p12` (o certificado autofirmado de prueba) y firma XAdES enveloped verificable (SigningTime + SigningCertificate)
 - [ ] **5. Envío y consulta** — POST a recepción + polling de estado
 - [ ] **6. Documentos restantes** — Tiquete, Notas de Crédito/Débito, Mensaje Receptor
+
+### Nota sobre la firma (hito 4)
+
+La firma actual es **XAdES-BES** (incluye `SigningTime` y `SigningCertificate`). Hacienda
+exige el perfil **XAdES-EPES**, que añade una `SignaturePolicyIdentifier` con el OID/URL de
+la política de resolución vigente. El firmador ya soporta pasarla (`opts.policy` de xadesjs);
+falta el dato oficial. La ruta `/firma/demo` usa un certificado **autofirmado de prueba**;
+en producción se usará el `.p12` real del emisor.
 
 > ⚠️ Prueba **siempre** contra el ambiente de sandbox/staging de Hacienda antes de producción.
 > Nunca subas certificados `.p12`, llaves ni PINs al repositorio (ya están en `.gitignore`).

@@ -24,7 +24,9 @@
     "node-forge": "^1.4.0",
     "undici": "^7.2.0",
     "xadesjs": "^2.6.7",
+    "xml-core": "^1.2.5",
     "xmlbuilder2": "^3.1.1",
+    "xpath": "^0.0.34",
     "zod": "^3.24.1"
   },
   "devDependencies": {

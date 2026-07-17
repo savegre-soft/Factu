@@ -4,6 +4,7 @@ import { healthRoutes } from "./routes/health.js";
 import { claveRoutes } from "./routes/clave.js";
 import { authRoutes } from "./routes/auth.js";
 import { facturaRoutes } from "./routes/factura.js";
+import { firmaRoutes } from "./routes/firma.js";
 
 export function buildServer() {
   const app = Fastify({ logger: true });
@@ -11,6 +12,7 @@ export function buildServer() {
   app.register(claveRoutes);
   app.register(authRoutes);
   app.register(facturaRoutes);
+  app.register(firmaRoutes);
   return app;
 }
 
