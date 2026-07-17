@@ -28,6 +28,36 @@ const schema = z.object({
     .transform((v) => v === "true"),
   /** Cada cuántos minutos revisar los buzones (mínimo 1). */
   CORREO_POLL_MINUTOS: z.coerce.number().int().min(1).default(5),
+
+  // --- Entrega de comprobantes al cliente (correo saliente SMTP) ---
+  /** Enviar el comprobante al cliente por correo tras la aceptación. */
+  ENTREGA_ENABLED: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((v) => v === "true"),
+  /** Máximo de intentos de envío por destinatario. */
+  ENTREGA_MAX_INTENTOS: z.coerce.number().int().min(1).default(3),
+  /** Cada cuántos minutos reintentar los envíos fallidos/pendientes. */
+  ENTREGA_POLL_MINUTOS: z.coerce.number().int().min(1).default(5),
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.coerce.number().int().default(587),
+  /** TLS directo (true, puerto 465) o STARTTLS (false, puerto 587). */
+  SMTP_SECURE: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((v) => v === "true"),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),
+  /** Remitente, ej. `Mi Empresa <facturas@empresa.cr>`. */
+  SMTP_FROM: z.string().optional(),
+
+  // --- Webhooks salientes (integraciones con sistemas externos) ---
+  WEBHOOK_ENABLED: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((v) => v === "true"),
+  WEBHOOK_MAX_INTENTOS: z.coerce.number().int().min(1).default(5),
+  WEBHOOK_POLL_MINUTOS: z.coerce.number().int().min(1).default(5),
 });
 
 export const env = schema.parse(process.env);

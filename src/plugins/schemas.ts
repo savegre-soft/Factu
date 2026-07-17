@@ -189,6 +189,31 @@ export const authYoSchema = {
   security: bearer,
 } as const;
 
+export const perfilActualizarSchema = {
+  tags: ["Autenticación"],
+  summary: "Actualiza tu propio perfil (nombre)",
+  security: bearer,
+  body: {
+    type: "object",
+    properties: { nombre: { type: "string" } },
+    required: ["nombre"],
+  },
+} as const;
+
+export const perfilPasswordSchema = {
+  tags: ["Autenticación"],
+  summary: "Cambia tu propia contraseña (verifica la actual)",
+  security: bearer,
+  body: {
+    type: "object",
+    properties: {
+      actual: { type: "string" },
+      nueva: { type: "string", minLength: 8 },
+    },
+    required: ["actual", "nueva"],
+  },
+} as const;
+
 export const crearUsuarioSchema = {
   tags: ["Autenticación"],
   summary: "Crea un usuario en tu organización (solo admin)",
@@ -405,6 +430,24 @@ export const comprobantesListarSchema = {
   security: bearer,
 } as const;
 
+export const comprobanteReenviarSchema = {
+  tags: ["Comprobantes"],
+  summary: "Reenvía el comprobante al cliente por correo (PDF + XML)",
+  security: bearer,
+  params: { type: "object", properties: { clave: { type: "string" } }, required: ["clave"] },
+  body: {
+    type: "object",
+    properties: { correo: { type: "string", format: "email", description: "Destino; si se omite, el último usado" } },
+  },
+} as const;
+
+export const comprobanteEnviosSchema = {
+  tags: ["Comprobantes"],
+  summary: "Historial de envíos del comprobante al cliente",
+  security: bearer,
+  params: { type: "object", properties: { clave: { type: "string" } }, required: ["clave"] },
+} as const;
+
 export const comprobanteGetSchema = {
   tags: ["Comprobantes"],
   summary: "Consulta un comprobante persistido por su clave (incluye el XML firmado)",
@@ -514,6 +557,46 @@ export const correoGetSchema = {
   security: bearer,
 } as const;
 
+const smtpBody = {
+  type: "object",
+  properties: {
+    host: { type: "string", description: "Servidor SMTP, ej. smtp.gmail.com" },
+    port: { type: "number", description: "Puerto, ej. 587 (STARTTLS) o 465 (TLS)" },
+    secure: { type: "boolean", description: "TLS directo (465)" },
+    usuario: { type: "string" },
+    password: { type: "string", description: "Contraseña o app password" },
+    remitente: { type: "string", description: 'Remitente, ej. "Mi Empresa <facturas@empresa.cr>"' },
+    activo: { type: "boolean" },
+  },
+  required: ["host", "remitente"],
+} as const;
+
+export const correoSalidaGetSchema = {
+  tags: ["Correo"],
+  summary: "Configuración del correo de salida (SMTP), sin contraseña",
+  security: bearer,
+} as const;
+
+export const correoSalidaGuardarSchema = {
+  tags: ["Correo"],
+  summary: "Guarda la configuración del correo de salida (contraseña cifrada)",
+  security: bearer,
+  body: smtpBody,
+} as const;
+
+export const correoSalidaEliminarSchema = {
+  tags: ["Correo"],
+  summary: "Elimina la configuración del correo de salida",
+  security: bearer,
+} as const;
+
+export const correoSalidaProbarSchema = {
+  tags: ["Correo"],
+  summary: "Prueba la conexión SMTP de salida",
+  security: bearer,
+  body: smtpBody,
+} as const;
+
 export const correoGuardarSchema = {
   tags: ["Correo"],
   summary: "Guarda la configuración del buzón (contraseña cifrada en reposo)",
@@ -599,6 +682,39 @@ export const recibidoMensajeReceptorSchema = {
   },
 } as const;
 
+export const chatContactosSchema = {
+  tags: ["Chat"],
+  summary: "Usuarios del tenant con no leídos y último mensaje",
+  security: bearer,
+} as const;
+
+export const chatNoLeidosSchema = {
+  tags: ["Chat"],
+  summary: "Total de mensajes sin leer",
+  security: bearer,
+} as const;
+
+export const chatConversacionSchema = {
+  tags: ["Chat"],
+  summary: "Conversación con un usuario (marca los recibidos como leídos)",
+  security: bearer,
+  params: { type: "object", properties: { usuarioId: { type: "string" } }, required: ["usuarioId"] },
+} as const;
+
+export const chatEnviarSchema = {
+  tags: ["Chat"],
+  summary: "Envía un mensaje a un usuario del tenant",
+  security: bearer,
+  body: {
+    type: "object",
+    properties: {
+      para: { type: "string", description: "Id del usuario destino" },
+      texto: { type: "string", maxLength: 4000 },
+    },
+    required: ["para", "texto"],
+  },
+} as const;
+
 export const apiKeyCrearSchema = {
   tags: ["Integraciones"],
   summary: "Crea una API key para una aplicación externa (solo admin)",
@@ -635,5 +751,97 @@ export const apiKeyRevocarSchema = {
     type: "object",
     properties: { id: { type: "string" } },
     required: ["id"],
+  },
+} as const;
+
+const webhookBody = {
+  type: "object",
+  properties: {
+    url: { type: "string", format: "uri", description: "URL destino (HTTPS) que recibirá el POST" },
+    secret: {
+      type: "string",
+      description: "Secreto para firmar (HMAC-SHA256). Se guarda cifrado; envía \"\" para conservarlo al editar",
+    },
+    eventos: {
+      type: "array",
+      items: {
+        type: "string",
+        enum: ["comprobante.aceptado", "comprobante.rechazado", "documento.recibido", "entrega.cliente"],
+      },
+      description: "Eventos a los que se suscribe",
+    },
+    activo: { type: "boolean", description: "Si está activo recibe notificaciones" },
+  },
+  required: ["url", "eventos"],
+} as const;
+
+export const webhookListarSchema = {
+  tags: ["Integraciones"],
+  summary: "Lista los webhooks salientes de tu organización (solo admin)",
+  security: bearer,
+} as const;
+
+export const webhookCrearSchema = {
+  tags: ["Integraciones"],
+  summary: "Crea un webhook saliente (solo admin)",
+  security: bearer,
+  body: webhookBody,
+} as const;
+
+export const webhookActualizarSchema = {
+  tags: ["Integraciones"],
+  summary: "Actualiza un webhook saliente (solo admin)",
+  security: bearer,
+  params: { type: "object", properties: { id: { type: "string" } }, required: ["id"] },
+  body: webhookBody,
+} as const;
+
+export const webhookEliminarSchema = {
+  tags: ["Integraciones"],
+  summary: "Elimina un webhook saliente (solo admin)",
+  security: bearer,
+  params: { type: "object", properties: { id: { type: "string" } }, required: ["id"] },
+} as const;
+
+export const webhookProbarSchema = {
+  tags: ["Integraciones"],
+  summary: "Envía un evento de prueba al webhook (solo admin)",
+  security: bearer,
+  params: { type: "object", properties: { id: { type: "string" } }, required: ["id"] },
+} as const;
+
+export const webhookEntregasSchema = {
+  tags: ["Integraciones"],
+  summary: "Historial de entregas de un webhook (solo admin)",
+  security: bearer,
+  params: { type: "object", properties: { id: { type: "string" } }, required: ["id"] },
+} as const;
+
+export const auditoriaListarSchema = {
+  tags: ["Auditoría"],
+  summary: "Registro de auditoría de la organización (solo admin)",
+  description: "Acciones de negocio (login, emisión, integraciones, configuración) atribuidas a un usuario o API key.",
+  security: bearer,
+  querystring: {
+    type: "object",
+    properties: {
+      accion: { type: "string", description: "Filtra por acción exacta, ej. \"comprobante.emitir\"" },
+      limite: { type: "integer", minimum: 1, maximum: 500, description: "Máximo de registros (por defecto 200)" },
+    },
+  },
+} as const;
+
+export const logsListarSchema = {
+  tags: ["Auditoría"],
+  summary: "Registro del sistema (logs técnicos) de la organización (solo admin)",
+  description: "Eventos técnicos: pollers, entregas, webhooks y errores.",
+  security: bearer,
+  querystring: {
+    type: "object",
+    properties: {
+      nivel: { type: "string", enum: ["info", "warn", "error"], description: "Filtra por nivel" },
+      origen: { type: "string", description: "Filtra por origen, ej. \"webhooks\"" },
+      limite: { type: "integer", minimum: 1, maximum: 500, description: "Máximo de registros (por defecto 200)" },
+    },
   },
 } as const;

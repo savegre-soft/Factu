@@ -17,9 +17,29 @@ import type {
   BuzonRecord,
   BuzonRepository,
   CambiosBorrador,
+  CambiosEnvio,
   CambiosUsuario,
+  EnvioComprobanteRecord,
+  EnvioComprobanteRepository,
+  EstadoEnvio,
+  MensajeRecord,
+  MensajeRepository,
   NuevoBorrador,
+  NuevoMensaje,
+  WebhookRecord,
+  WebhookRepository,
+  NuevoWebhook,
+  CambiosWebhook,
+  WebhookEntregaRecord,
+  WebhookEntregaRepository,
+  NuevaWebhookEntrega,
+  CambiosWebhookEntrega,
+  EstadoWebhookEntrega,
   NuevoBuzon,
+  NuevoEnvio,
+  NuevoSmtpSaliente,
+  SmtpSalienteRecord,
+  SmtpSalienteRepository,
   CertificadoSellado,
   ComprobanteRecord,
   ComprobanteRepository,
@@ -35,6 +55,16 @@ import type {
   TenantRepository,
   UsuarioRecord,
   UsuarioRepository,
+  ActorTipo,
+  AuditoriaRecord,
+  AuditoriaRepository,
+  NuevaAuditoria,
+  FiltroAuditoria,
+  NivelLog,
+  LogRecord,
+  LogRepository,
+  NuevoLog,
+  FiltroLog,
 } from "./types.js";
 
 export const prisma = new PrismaClient();
@@ -153,6 +183,281 @@ function aBuzonRecord(row: BuzonRow): BuzonRecord {
   return { ...row, passwordSellado: JSON.parse(row.passwordSellado) as SecretoSellado };
 }
 
+function aEnvioRecord(row: {
+  id: string;
+  tenantId: string;
+  clave: string;
+  cedulaEmisor: string;
+  destinatario: string;
+  asunto: string;
+  estado: string;
+  error: string | null;
+  intentos: number;
+  createdAt: Date;
+  updatedAt: Date;
+}): EnvioComprobanteRecord {
+  return { ...row, estado: row.estado as EstadoEnvio };
+}
+
+export class EnvioComprobanteRepositoryPrisma implements EnvioComprobanteRepository {
+  constructor(private readonly db: PrismaClient) {}
+
+  async crear(rec: NuevoEnvio): Promise<EnvioComprobanteRecord> {
+    const row = await this.db.envioComprobante.create({ data: rec });
+    return aEnvioRecord(row);
+  }
+
+  async actualizar(id: string, cambios: CambiosEnvio): Promise<EnvioComprobanteRecord> {
+    const row = await this.db.envioComprobante.update({ where: { id }, data: cambios });
+    return aEnvioRecord(row);
+  }
+
+  async buscarPorId(id: string): Promise<EnvioComprobanteRecord | null> {
+    const row = await this.db.envioComprobante.findUnique({ where: { id } });
+    return row ? aEnvioRecord(row) : null;
+  }
+
+  async listarPorClave(tenantId: string, clave: string): Promise<EnvioComprobanteRecord[]> {
+    const rows = await this.db.envioComprobante.findMany({
+      where: { tenantId, clave },
+      orderBy: { createdAt: "desc" },
+    });
+    return rows.map(aEnvioRecord);
+  }
+
+  async listarReintentables(maxIntentos: number): Promise<EnvioComprobanteRecord[]> {
+    const rows = await this.db.envioComprobante.findMany({
+      where: { estado: { not: "enviado" }, intentos: { lt: maxIntentos } },
+    });
+    return rows.map(aEnvioRecord);
+  }
+}
+
+type WebhookRow = {
+  id: string;
+  tenantId: string;
+  url: string;
+  secretSellado: string | null;
+  eventos: string[];
+  activo: boolean;
+  lastStatus: number | null;
+  lastError: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+function aWebhookRecord(row: WebhookRow): WebhookRecord {
+  return {
+    ...row,
+    secretSellado: row.secretSellado ? (JSON.parse(row.secretSellado) as SecretoSellado) : null,
+  };
+}
+
+function datosWebhook(cambios: CambiosWebhook) {
+  const data: Record<string, unknown> = { ...cambios };
+  if ("secretSellado" in cambios) {
+    data.secretSellado = cambios.secretSellado ? JSON.stringify(cambios.secretSellado) : null;
+  }
+  return data;
+}
+
+export class WebhookRepositoryPrisma implements WebhookRepository {
+  constructor(private readonly db: PrismaClient) {}
+
+  async crear(input: NuevoWebhook): Promise<WebhookRecord> {
+    const row = await this.db.webhook.create({
+      data: {
+        id: input.id,
+        tenantId: input.tenantId,
+        url: input.url,
+        secretSellado: input.secretSellado ? JSON.stringify(input.secretSellado) : null,
+        eventos: input.eventos,
+        activo: input.activo,
+      },
+    });
+    return aWebhookRecord(row);
+  }
+
+  async actualizar(id: string, cambios: CambiosWebhook): Promise<WebhookRecord> {
+    const row = await this.db.webhook.update({ where: { id }, data: datosWebhook(cambios) });
+    return aWebhookRecord(row);
+  }
+
+  async buscarPorId(id: string): Promise<WebhookRecord | null> {
+    const row = await this.db.webhook.findUnique({ where: { id } });
+    return row ? aWebhookRecord(row) : null;
+  }
+
+  async listarPorTenant(tenantId: string): Promise<WebhookRecord[]> {
+    const rows = await this.db.webhook.findMany({ where: { tenantId }, orderBy: { createdAt: "asc" } });
+    return rows.map(aWebhookRecord);
+  }
+
+  async listarActivosPorEvento(tenantId: string, evento: string): Promise<WebhookRecord[]> {
+    const rows = await this.db.webhook.findMany({
+      where: { tenantId, activo: true, eventos: { has: evento } },
+    });
+    return rows.map(aWebhookRecord);
+  }
+
+  async eliminar(id: string): Promise<void> {
+    await this.db.webhook.delete({ where: { id } });
+  }
+}
+
+function aWebhookEntregaRecord(row: {
+  id: string;
+  tenantId: string;
+  webhookId: string;
+  evento: string;
+  payload: string;
+  estado: string;
+  statusCode: number | null;
+  error: string | null;
+  intentos: number;
+  createdAt: Date;
+  updatedAt: Date;
+}): WebhookEntregaRecord {
+  return { ...row, estado: row.estado as EstadoWebhookEntrega };
+}
+
+export class WebhookEntregaRepositoryPrisma implements WebhookEntregaRepository {
+  constructor(private readonly db: PrismaClient) {}
+
+  async crear(input: NuevaWebhookEntrega): Promise<WebhookEntregaRecord> {
+    const row = await this.db.webhookEntrega.create({ data: input });
+    return aWebhookEntregaRecord(row);
+  }
+
+  async actualizar(id: string, cambios: CambiosWebhookEntrega): Promise<WebhookEntregaRecord> {
+    const row = await this.db.webhookEntrega.update({ where: { id }, data: cambios });
+    return aWebhookEntregaRecord(row);
+  }
+
+  async buscarPorId(id: string): Promise<WebhookEntregaRecord | null> {
+    const row = await this.db.webhookEntrega.findUnique({ where: { id } });
+    return row ? aWebhookEntregaRecord(row) : null;
+  }
+
+  async listarPorWebhook(tenantId: string, webhookId: string, limite: number): Promise<WebhookEntregaRecord[]> {
+    const rows = await this.db.webhookEntrega.findMany({
+      where: { tenantId, webhookId },
+      orderBy: { createdAt: "desc" },
+      take: limite,
+    });
+    return rows.map(aWebhookEntregaRecord);
+  }
+
+  async listarReintentables(maxIntentos: number): Promise<WebhookEntregaRecord[]> {
+    const rows = await this.db.webhookEntrega.findMany({
+      where: { estado: { not: "enviado" }, intentos: { lt: maxIntentos } },
+    });
+    return rows.map(aWebhookEntregaRecord);
+  }
+}
+
+function aAuditoriaRecord(row: {
+  id: string;
+  tenantId: string;
+  actorId: string | null;
+  actorNombre: string;
+  actorTipo: string;
+  accion: string;
+  recurso: string;
+  recursoId: string | null;
+  detalle: string | null;
+  ip: string | null;
+  createdAt: Date;
+}): AuditoriaRecord {
+  return { ...row, actorTipo: row.actorTipo as ActorTipo };
+}
+
+export class AuditoriaRepositoryPrisma implements AuditoriaRepository {
+  constructor(private readonly db: PrismaClient) {}
+
+  async crear(input: NuevaAuditoria): Promise<AuditoriaRecord> {
+    const row = await this.db.registroAuditoria.create({ data: input });
+    return aAuditoriaRecord(row);
+  }
+
+  async listarPorTenant(tenantId: string, filtro?: FiltroAuditoria): Promise<AuditoriaRecord[]> {
+    const rows = await this.db.registroAuditoria.findMany({
+      where: { tenantId, ...(filtro?.accion ? { accion: filtro.accion } : {}) },
+      orderBy: { createdAt: "desc" },
+      take: filtro?.limite ?? 200,
+    });
+    return rows.map(aAuditoriaRecord);
+  }
+}
+
+function aLogRecord(row: {
+  id: string;
+  tenantId: string | null;
+  nivel: string;
+  origen: string;
+  mensaje: string;
+  detalle: string | null;
+  createdAt: Date;
+}): LogRecord {
+  return { ...row, nivel: row.nivel as NivelLog };
+}
+
+export class LogRepositoryPrisma implements LogRepository {
+  constructor(private readonly db: PrismaClient) {}
+
+  async crear(input: NuevoLog): Promise<LogRecord> {
+    const row = await this.db.registroLog.create({ data: input });
+    return aLogRecord(row);
+  }
+
+  async listarPorTenant(tenantId: string, filtro?: FiltroLog): Promise<LogRecord[]> {
+    const rows = await this.db.registroLog.findMany({
+      where: {
+        tenantId,
+        ...(filtro?.nivel ? { nivel: filtro.nivel } : {}),
+        ...(filtro?.origen ? { origen: filtro.origen } : {}),
+      },
+      orderBy: { createdAt: "desc" },
+      take: filtro?.limite ?? 200,
+    });
+    return rows.map(aLogRecord);
+  }
+}
+
+export class MensajeRepositoryPrisma implements MensajeRepository {
+  constructor(private readonly db: PrismaClient) {}
+
+  async crear(input: NuevoMensaje): Promise<MensajeRecord> {
+    return this.db.mensaje.create({ data: input });
+  }
+
+  async listarConversacion(tenantId: string, a: string, b: string): Promise<MensajeRecord[]> {
+    return this.db.mensaje.findMany({
+      where: {
+        tenantId,
+        OR: [
+          { deId: a, paraId: b },
+          { deId: b, paraId: a },
+        ],
+      },
+      orderBy: { createdAt: "asc" },
+    });
+  }
+
+  async listarDeUsuario(tenantId: string, usuarioId: string): Promise<MensajeRecord[]> {
+    return this.db.mensaje.findMany({
+      where: { tenantId, OR: [{ deId: usuarioId }, { paraId: usuarioId }] },
+    });
+  }
+
+  async marcarLeidos(tenantId: string, deId: string, paraId: string): Promise<void> {
+    await this.db.mensaje.updateMany({
+      where: { tenantId, deId, paraId, leido: false },
+      data: { leido: true },
+    });
+  }
+}
+
 export class BorradorRepositoryPrisma implements BorradorRepository {
   constructor(private readonly db: PrismaClient) {}
 
@@ -217,6 +522,59 @@ export class BuzonRepositoryPrisma implements BuzonRepository {
 
   async eliminar(tenantId: string): Promise<void> {
     await this.db.buzon.delete({ where: { tenantId } });
+  }
+}
+
+type SmtpRow = {
+  tenantId: string;
+  host: string;
+  port: number;
+  secure: boolean;
+  usuario: string | null;
+  passwordSellado: string | null;
+  remitente: string;
+  activo: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+function aSmtpRecord(row: SmtpRow): SmtpSalienteRecord {
+  return {
+    ...row,
+    passwordSellado: row.passwordSellado
+      ? (JSON.parse(row.passwordSellado) as SecretoSellado)
+      : null,
+  };
+}
+
+export class SmtpSalienteRepositoryPrisma implements SmtpSalienteRepository {
+  constructor(private readonly db: PrismaClient) {}
+
+  async upsert(input: NuevoSmtpSaliente): Promise<SmtpSalienteRecord> {
+    const data = {
+      host: input.host,
+      port: input.port,
+      secure: input.secure,
+      usuario: input.usuario,
+      passwordSellado: input.passwordSellado ? JSON.stringify(input.passwordSellado) : null,
+      remitente: input.remitente,
+      activo: input.activo,
+    };
+    const row = await this.db.smtpSaliente.upsert({
+      where: { tenantId: input.tenantId },
+      create: { tenantId: input.tenantId, ...data },
+      update: data,
+    });
+    return aSmtpRecord(row);
+  }
+
+  async buscarPorTenant(tenantId: string): Promise<SmtpSalienteRecord | null> {
+    const row = await this.db.smtpSaliente.findUnique({ where: { tenantId } });
+    return row ? aSmtpRecord(row) : null;
+  }
+
+  async eliminar(tenantId: string): Promise<void> {
+    await this.db.smtpSaliente.delete({ where: { tenantId } });
   }
 }
 

@@ -11,6 +11,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { apiKeyService } from "../services/apiKeys/index.js";
+import { registrarAuditoria, actorDesde } from "../services/auditoria/index.js";
 import { emisorRepository } from "../infra/repos/index.js";
 import { Permiso, Rol } from "../domain/auth/roles.js";
 import { apiKeyCrearSchema, apiKeyListarSchema, apiKeyRevocarSchema } from "../plugins/schemas.js";
@@ -49,6 +50,15 @@ export async function apiKeyRoutes(app: FastifyInstance): Promise<void> {
         expiresAt: parsed.data.expiresAt ?? null,
       });
 
+      registrarAuditoria({
+        tenantId: request.user.tenantId,
+        actor: actorDesde(request.user, request.ip),
+        accion: "apikey.crear",
+        recurso: "apikey",
+        recursoId: apiKey.id,
+        detalle: `${apiKey.label} (${apiKey.rol})`,
+      });
+
       return reply.status(201).send({
         ...apiKey,
         // El secreto completo se muestra SOLO en esta respuesta.
@@ -72,6 +82,13 @@ export async function apiKeyRoutes(app: FastifyInstance): Promise<void> {
       const { id } = request.params as { id: string };
       const ok = await apiKeyService.revocar(request.user.tenantId, id);
       if (!ok) return reply.status(404).send({ error: "API key no encontrada" });
+      registrarAuditoria({
+        tenantId: request.user.tenantId,
+        actor: actorDesde(request.user, request.ip),
+        accion: "apikey.revocar",
+        recurso: "apikey",
+        recursoId: id,
+      });
       return { id, revocada: true };
     },
   );

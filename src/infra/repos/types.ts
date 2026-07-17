@@ -49,6 +49,39 @@ export interface BuzonRepository {
   eliminar(tenantId: string): Promise<void>;
 }
 
+// ---- SMTP saliente (entrega de comprobantes al cliente) por organización ----
+
+export interface SmtpSalienteRecord {
+  tenantId: string;
+  host: string;
+  port: number;
+  secure: boolean;
+  usuario: string | null;
+  /** Contraseña cifrada; null si el SMTP no requiere auth. */
+  passwordSellado: SecretoSellado | null;
+  remitente: string;
+  activo: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface NuevoSmtpSaliente {
+  tenantId: string;
+  host: string;
+  port: number;
+  secure: boolean;
+  usuario: string | null;
+  passwordSellado: SecretoSellado | null;
+  remitente: string;
+  activo: boolean;
+}
+
+export interface SmtpSalienteRepository {
+  upsert(input: NuevoSmtpSaliente): Promise<SmtpSalienteRecord>;
+  buscarPorTenant(tenantId: string): Promise<SmtpSalienteRecord | null>;
+  eliminar(tenantId: string): Promise<void>;
+}
+
 // ---- Tenants y usuarios (control de acceso) ----
 
 export interface TenantRecord {
@@ -161,6 +194,194 @@ export interface BorradorRepository {
   eliminar(id: string): Promise<void>;
 }
 
+// ---- Webhooks salientes (integraciones con sistemas externos) ----
+
+export interface WebhookRecord {
+  id: string;
+  tenantId: string;
+  url: string;
+  secretSellado: SecretoSellado | null;
+  eventos: string[];
+  activo: boolean;
+  lastStatus: number | null;
+  lastError: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface NuevoWebhook {
+  id: string;
+  tenantId: string;
+  url: string;
+  secretSellado: SecretoSellado | null;
+  eventos: string[];
+  activo: boolean;
+}
+
+export interface CambiosWebhook {
+  url?: string;
+  secretSellado?: SecretoSellado | null;
+  eventos?: string[];
+  activo?: boolean;
+  lastStatus?: number | null;
+  lastError?: string | null;
+}
+
+export interface WebhookRepository {
+  crear(input: NuevoWebhook): Promise<WebhookRecord>;
+  actualizar(id: string, cambios: CambiosWebhook): Promise<WebhookRecord>;
+  buscarPorId(id: string): Promise<WebhookRecord | null>;
+  listarPorTenant(tenantId: string): Promise<WebhookRecord[]>;
+  /** Webhooks activos suscritos a un evento (para el disparo). */
+  listarActivosPorEvento(tenantId: string, evento: string): Promise<WebhookRecord[]>;
+  eliminar(id: string): Promise<void>;
+}
+
+export type EstadoWebhookEntrega = "pendiente" | "enviado" | "fallido";
+
+export interface WebhookEntregaRecord {
+  id: string;
+  tenantId: string;
+  webhookId: string;
+  evento: string;
+  payload: string;
+  estado: EstadoWebhookEntrega;
+  statusCode: number | null;
+  error: string | null;
+  intentos: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface NuevaWebhookEntrega {
+  id: string;
+  tenantId: string;
+  webhookId: string;
+  evento: string;
+  payload: string;
+  estado: EstadoWebhookEntrega;
+}
+
+export interface CambiosWebhookEntrega {
+  estado?: EstadoWebhookEntrega;
+  statusCode?: number | null;
+  error?: string | null;
+  intentos?: number;
+}
+
+export interface WebhookEntregaRepository {
+  crear(input: NuevaWebhookEntrega): Promise<WebhookEntregaRecord>;
+  actualizar(id: string, cambios: CambiosWebhookEntrega): Promise<WebhookEntregaRecord>;
+  buscarPorId(id: string): Promise<WebhookEntregaRecord | null>;
+  listarPorWebhook(tenantId: string, webhookId: string, limite: number): Promise<WebhookEntregaRecord[]>;
+  listarReintentables(maxIntentos: number): Promise<WebhookEntregaRecord[]>;
+}
+
+// ---- Auditoría (acciones de negocio) ----
+
+export type ActorTipo = "usuario" | "apikey" | "sistema";
+
+export interface AuditoriaRecord {
+  id: string;
+  tenantId: string;
+  actorId: string | null;
+  actorNombre: string;
+  actorTipo: ActorTipo;
+  accion: string;
+  recurso: string;
+  recursoId: string | null;
+  detalle: string | null;
+  ip: string | null;
+  createdAt: Date;
+}
+
+export interface NuevaAuditoria {
+  id: string;
+  tenantId: string;
+  actorId?: string | null;
+  actorNombre: string;
+  actorTipo: ActorTipo;
+  accion: string;
+  recurso: string;
+  recursoId?: string | null;
+  detalle?: string | null;
+  ip?: string | null;
+}
+
+export interface FiltroAuditoria {
+  accion?: string;
+  limite?: number;
+}
+
+export interface AuditoriaRepository {
+  crear(input: NuevaAuditoria): Promise<AuditoriaRecord>;
+  listarPorTenant(tenantId: string, filtro?: FiltroAuditoria): Promise<AuditoriaRecord[]>;
+}
+
+// ---- Registro del sistema (logs técnicos) ----
+
+export type NivelLog = "info" | "warn" | "error";
+
+export interface LogRecord {
+  id: string;
+  tenantId: string | null;
+  nivel: NivelLog;
+  origen: string;
+  mensaje: string;
+  detalle: string | null;
+  createdAt: Date;
+}
+
+export interface NuevoLog {
+  id: string;
+  tenantId?: string | null;
+  nivel: NivelLog;
+  origen: string;
+  mensaje: string;
+  detalle?: string | null;
+}
+
+export interface FiltroLog {
+  nivel?: NivelLog;
+  origen?: string;
+  limite?: number;
+}
+
+export interface LogRepository {
+  crear(input: NuevoLog): Promise<LogRecord>;
+  listarPorTenant(tenantId: string, filtro?: FiltroLog): Promise<LogRecord[]>;
+}
+
+// ---- Chat entre usuarios del tenant ----
+
+export interface MensajeRecord {
+  id: string;
+  tenantId: string;
+  deId: string;
+  paraId: string;
+  texto: string;
+  leido: boolean;
+  createdAt: Date;
+}
+
+export interface NuevoMensaje {
+  id: string;
+  tenantId: string;
+  deId: string;
+  paraId: string;
+  texto: string;
+}
+
+export interface MensajeRepository {
+  crear(input: NuevoMensaje): Promise<MensajeRecord>;
+  /** Conversación entre dos usuarios (ambos sentidos), ascendente por fecha. */
+  listarConversacion(tenantId: string, a: string, b: string): Promise<MensajeRecord[]>;
+  /** Todos los mensajes en los que participa el usuario (enviados o recibidos). */
+  listarDeUsuario(tenantId: string, usuarioId: string): Promise<MensajeRecord[]>;
+  /** Marca como leídos los mensajes que `paraId` recibió de `deId`. */
+  marcarLeidos(tenantId: string, deId: string, paraId: string): Promise<void>;
+}
+
 // ---- Emisores ----
 
 export interface EmisorRecord {
@@ -208,6 +429,49 @@ export interface ComprobanteRepository {
   actualizarEstado(clave: string, estado: string, respuestaXml?: string): Promise<void>;
   buscar(clave: string): Promise<ComprobanteRecord | null>;
   listarPorEmisor(cedula: string): Promise<ComprobanteRecord[]>;
+}
+
+// ---- Envíos del comprobante al cliente (auditoría de correo saliente) ----
+
+export type EstadoEnvio = "pendiente" | "enviado" | "fallido";
+
+export interface EnvioComprobanteRecord {
+  id: string;
+  tenantId: string;
+  clave: string;
+  cedulaEmisor: string;
+  destinatario: string;
+  asunto: string;
+  estado: EstadoEnvio;
+  error: string | null;
+  intentos: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface NuevoEnvio {
+  id: string;
+  tenantId: string;
+  clave: string;
+  cedulaEmisor: string;
+  destinatario: string;
+  asunto: string;
+  estado: EstadoEnvio;
+}
+
+export interface CambiosEnvio {
+  estado?: EstadoEnvio;
+  error?: string | null;
+  intentos?: number;
+}
+
+export interface EnvioComprobanteRepository {
+  crear(rec: NuevoEnvio): Promise<EnvioComprobanteRecord>;
+  actualizar(id: string, cambios: CambiosEnvio): Promise<EnvioComprobanteRecord>;
+  buscarPorId(id: string): Promise<EnvioComprobanteRecord | null>;
+  listarPorClave(tenantId: string, clave: string): Promise<EnvioComprobanteRecord[]>;
+  /** Envíos reintentables (pendiente/fallido con intentos < max), para el poller. */
+  listarReintentables(maxIntentos: number): Promise<EnvioComprobanteRecord[]>;
 }
 
 // ---- Documentos recibidos (facturas que nos emiten → mensaje receptor) ----

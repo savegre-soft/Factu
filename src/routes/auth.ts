@@ -15,12 +15,15 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { env } from "../config/env.js";
 import { usuarioService } from "../services/usuarios/index.js";
+import { registrarAuditoria } from "../services/auditoria/index.js";
 import { Permiso, Rol } from "../domain/auth/roles.js";
 import type { JwtPayload } from "../plugins/auth.js";
 import {
   authRegistroSchema,
   authLoginSchema,
   authYoSchema,
+  perfilActualizarSchema,
+  perfilPasswordSchema,
   crearUsuarioSchema,
   listarUsuariosSchema,
   usuarioGetSchema,
@@ -59,6 +62,13 @@ const cambiosUsuarioSchema = z
 
 const passwordSchema = z.object({ password: z.string().min(8) });
 
+const perfilSchema = z.object({ nombre: z.string().min(1) });
+
+const passwordPropiaSchema = z.object({
+  actual: z.string().min(1),
+  nueva: z.string().min(8),
+});
+
 export async function authRoutes(app: FastifyInstance): Promise<void> {
   function firmar(payload: JwtPayload): string {
     return app.jwt.sign(payload, { expiresIn: env.JWT_EXPIRES_IN });
@@ -93,18 +103,72 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(401).send({ error: "Credenciales inválidas" });
     }
     const token = firmar({ sub: usuario.id, tenantId: usuario.tenantId, rol: usuario.rol, email: usuario.email });
+    registrarAuditoria({
+      tenantId: usuario.tenantId,
+      actor: { id: usuario.id, nombre: usuario.nombre ?? usuario.email, tipo: "usuario", ip: request.ip },
+      accion: "auth.login",
+      recurso: "sesion",
+      detalle: `Inicio de sesión de ${usuario.email}`,
+    });
     return { token, usuario: { id: usuario.id, email: usuario.email, nombre: usuario.nombre, rol: usuario.rol } };
   });
 
   // --- Autenticado ---
   app.get("/auth/yo", { schema: authYoSchema, preHandler: app.authenticate }, async (request) => {
+    // Para usuarios humanos incluimos el nombre; una API key de servicio no lo tiene.
+    const usuario = await usuarioService.obtenerUsuario(request.user.tenantId, request.user.sub);
     return {
       id: request.user.sub,
-      email: request.user.email,
+      email: usuario?.email ?? request.user.email,
+      nombre: usuario?.nombre ?? null,
       rol: request.user.rol,
       tenantId: request.user.tenantId,
     };
   });
+
+  // Actualizar el propio perfil (nombre).
+  app.patch(
+    "/auth/yo",
+    { schema: perfilActualizarSchema, preHandler: app.authenticate },
+    async (request, reply) => {
+      if (request.user.kind === "service") {
+        return reply.status(403).send({ error: "Solo usuarios pueden editar su perfil" });
+      }
+      const parsed = perfilSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.status(400).send({ error: "Entrada inválida", detalles: parsed.error.issues });
+      }
+      const usuario = await usuarioService.actualizarPerfil(request.user.sub, parsed.data);
+      if (!usuario) return reply.status(404).send({ error: "Usuario no encontrado" });
+      return usuario;
+    },
+  );
+
+  // Cambiar la propia contraseña (verifica la actual).
+  app.put(
+    "/auth/yo/password",
+    { schema: perfilPasswordSchema, preHandler: app.authenticate },
+    async (request, reply) => {
+      if (request.user.kind === "service") {
+        return reply.status(403).send({ error: "Solo usuarios pueden cambiar su contraseña" });
+      }
+      const parsed = passwordPropiaSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.status(400).send({ error: "Entrada inválida", detalles: parsed.error.issues });
+      }
+      try {
+        const usuario = await usuarioService.cambiarPasswordPropia(
+          request.user.sub,
+          parsed.data.actual,
+          parsed.data.nueva,
+        );
+        if (!usuario) return reply.status(404).send({ error: "Usuario no encontrado" });
+        return { ok: true };
+      } catch (err) {
+        return reply.status(400).send({ error: (err as Error).message });
+      }
+    },
+  );
 
   // --- Solo admin (gestión de usuarios) ---
   app.post(

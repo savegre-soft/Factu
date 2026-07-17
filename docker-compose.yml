@@ -39,6 +39,14 @@ services:
       HACIENDA_IDP_URL: https://idp.comprobanteselectronicos.go.cr/auth/realms/rut-stag/protocol/openid-connect/token
       HACIENDA_API_URL: https://api-sandbox.comprobanteselectronicos.go.cr/recepcion/v1
       HACIENDA_CLIENT_ID: api-stag
+      # Entrega del comprobante al cliente por correo (rellena el SMTP para activarla).
+      ENTREGA_ENABLED: "true"
+      SMTP_HOST: ""
+      SMTP_PORT: "587"
+      SMTP_SECURE: "false"
+      SMTP_USER: ""
+      SMTP_PASS: ""
+      SMTP_FROM: ""
     # Crea/actualiza las tablas y arranca el servidor
     command: sh -c "npx prisma db push --skip-generate && node dist/main.js"
     ports:

@@ -17,6 +17,7 @@ import type {
   DocumentoRecibidoRecord,
   DocumentoRecibidoRepository,
 } from "../../infra/repos/types.js";
+import { emitirEvento } from "../webhooks/index.js";
 
 export type OrigenDocumento = "manual" | "interno" | "correo";
 
@@ -63,6 +64,16 @@ export class DocumentosRecibidosService {
       totalComprobante: datos.totalComprobante,
       totalImpuesto: datos.totalImpuesto,
       xml,
+      origen,
+    });
+
+    emitirEvento(tenantId, "documento.recibido", {
+      clave: documento.clave,
+      tipo: documento.tipo,
+      emisorNombre: documento.emisorNombre,
+      emisorCedula: documento.emisorCedula,
+      moneda: documento.moneda,
+      totalComprobante: documento.totalComprobante,
       origen,
     });
 

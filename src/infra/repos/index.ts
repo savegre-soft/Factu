@@ -9,7 +9,14 @@ import {
   BuzonRepositoryMemoria,
   DocumentoRecibidoRepositoryMemoria,
   EmisorRepositoryMemoria,
+  EnvioComprobanteRepositoryMemoria,
   ComprobanteRepositoryMemoria,
+  MensajeRepositoryMemoria,
+  SmtpSalienteRepositoryMemoria,
+  WebhookRepositoryMemoria,
+  WebhookEntregaRepositoryMemoria,
+  AuditoriaRepositoryMemoria,
+  LogRepositoryMemoria,
   TenantRepositoryMemoria,
   UsuarioRepositoryMemoria,
 } from "./memory.js";
@@ -19,7 +26,14 @@ import type {
   BuzonRepository,
   DocumentoRecibidoRepository,
   EmisorRepository,
+  EnvioComprobanteRepository,
   ComprobanteRepository,
+  MensajeRepository,
+  SmtpSalienteRepository,
+  WebhookRepository,
+  WebhookEntregaRepository,
+  AuditoriaRepository,
+  LogRepository,
   TenantRepository,
   UsuarioRepository,
 } from "./types.js";
@@ -32,6 +46,13 @@ let apiKeyRepo: ApiKeyRepository;
 let recibidoRepo: DocumentoRecibidoRepository;
 let buzonRepo: BuzonRepository;
 let borradorRepo: BorradorRepository;
+let envioRepo: EnvioComprobanteRepository;
+let smtpRepo: SmtpSalienteRepository;
+let mensajeRepo: MensajeRepository;
+let webhookRepo: WebhookRepository;
+let webhookEntregaRepo: WebhookEntregaRepository;
+let auditoriaRepo: AuditoriaRepository;
+let logRepo: LogRepository;
 
 if (env.PERSISTENCIA === "prisma") {
   // Import perezoso para no exigir el cliente de Prisma cuando se usa memoria.
@@ -41,7 +62,14 @@ if (env.PERSISTENCIA === "prisma") {
     BuzonRepositoryPrisma,
     DocumentoRecibidoRepositoryPrisma,
     EmisorRepositoryPrisma,
+    EnvioComprobanteRepositoryPrisma,
     ComprobanteRepositoryPrisma,
+    MensajeRepositoryPrisma,
+    SmtpSalienteRepositoryPrisma,
+    WebhookRepositoryPrisma,
+    WebhookEntregaRepositoryPrisma,
+    AuditoriaRepositoryPrisma,
+    LogRepositoryPrisma,
     TenantRepositoryPrisma,
     UsuarioRepositoryPrisma,
     prisma,
@@ -54,6 +82,13 @@ if (env.PERSISTENCIA === "prisma") {
   recibidoRepo = new DocumentoRecibidoRepositoryPrisma(prisma);
   buzonRepo = new BuzonRepositoryPrisma(prisma);
   borradorRepo = new BorradorRepositoryPrisma(prisma);
+  envioRepo = new EnvioComprobanteRepositoryPrisma(prisma);
+  smtpRepo = new SmtpSalienteRepositoryPrisma(prisma);
+  mensajeRepo = new MensajeRepositoryPrisma(prisma);
+  webhookRepo = new WebhookRepositoryPrisma(prisma);
+  webhookEntregaRepo = new WebhookEntregaRepositoryPrisma(prisma);
+  auditoriaRepo = new AuditoriaRepositoryPrisma(prisma);
+  logRepo = new LogRepositoryPrisma(prisma);
 } else {
   emisorRepo = new EmisorRepositoryMemoria();
   comprobanteRepo = new ComprobanteRepositoryMemoria();
@@ -63,6 +98,13 @@ if (env.PERSISTENCIA === "prisma") {
   recibidoRepo = new DocumentoRecibidoRepositoryMemoria();
   buzonRepo = new BuzonRepositoryMemoria();
   borradorRepo = new BorradorRepositoryMemoria();
+  envioRepo = new EnvioComprobanteRepositoryMemoria();
+  smtpRepo = new SmtpSalienteRepositoryMemoria();
+  mensajeRepo = new MensajeRepositoryMemoria();
+  webhookRepo = new WebhookRepositoryMemoria();
+  webhookEntregaRepo = new WebhookEntregaRepositoryMemoria();
+  auditoriaRepo = new AuditoriaRepositoryMemoria();
+  logRepo = new LogRepositoryMemoria();
 }
 
 export const emisorRepository = emisorRepo;
@@ -73,6 +115,13 @@ export const apiKeyRepository = apiKeyRepo;
 export const documentoRecibidoRepository = recibidoRepo;
 export const buzonRepository = buzonRepo;
 export const borradorRepository = borradorRepo;
+export const envioComprobanteRepository = envioRepo;
+export const smtpSalienteRepository = smtpRepo;
+export const mensajeRepository = mensajeRepo;
+export const webhookRepository = webhookRepo;
+export const webhookEntregaRepository = webhookEntregaRepo;
+export const auditoriaRepository = auditoriaRepo;
+export const logRepository = logRepo;
 
 /** Llave maestra efectiva (con aviso si no se configuró en desarrollo). */
 export function masterKey(): string {

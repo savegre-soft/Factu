@@ -7,13 +7,19 @@ import { generarP12Autofirmado, type Certificado } from "../services/firma/certi
 import { certStore } from "../services/emisor/index.js";
 import { comprobanteRepository, emisorRepository } from "../infra/repos/index.js";
 import { documentosRecibidosService } from "../services/documentosRecibidos/index.js";
+import { entregaService } from "../services/entrega/index.js";
+import { emitirEvento } from "../services/webhooks/index.js";
+import { registrarAuditoria, actorDesde } from "../services/auditoria/index.js";
 import { TipoDocumento } from "../domain/factura/facturaXml.js";
 import { validarComprobante } from "../domain/validacion/validacion.js";
 import {
   comprobanteEnviarSchema,
   comprobanteGetSchema,
   comprobantesListarSchema,
+  comprobanteReenviarSchema,
+  comprobanteEnviosSchema,
 } from "../plugins/schemas.js";
+import { z } from "zod";
 import { Permiso } from "../domain/auth/roles.js";
 import { emisorDelTenant } from "./_guards.js";
 import type { DatosFactura } from "../services/hacienda/emision.js";
@@ -99,6 +105,26 @@ export async function comprobanteRoutes(app: FastifyInstance): Promise<void> {
         respuestaXml: result.estado.respuestaXml,
       });
 
+      registrarAuditoria({
+        tenantId: request.user.tenantId,
+        actor: actorDesde(request.user, request.ip),
+        accion: "comprobante.emitir",
+        recurso: "comprobante",
+        recursoId: result.clave,
+        detalle: `${tipoParam} ${result.consecutivo} → ${result.estado.estado}`,
+      });
+
+      // Webhook a sistemas externos según el veredicto de Hacienda.
+      if (result.estado.estado === "aceptado" || result.estado.estado === "rechazado") {
+        emitirEvento(request.user.tenantId, `comprobante.${result.estado.estado}`, {
+          clave: result.clave,
+          tipo: tipoParam,
+          consecutivo: result.consecutivo,
+          estado: result.estado.estado,
+          cedulaEmisor: datos.cedulaEmisor,
+        });
+      }
+
       // Routing interno: si el receptor es un emisor registrado en Factu, el
       // comprobante aparece en sus "documentos recibidos" para que responda con
       // el mensaje receptor. Nunca debe romper la emisión.
@@ -116,6 +142,21 @@ export async function comprobanteRoutes(app: FastifyInstance): Promise<void> {
         } catch (err) {
           request.log.warn({ err }, "No se pudo registrar el documento recibido (routing interno)");
         }
+      }
+
+      // Entrega al cliente: si Hacienda ACEPTÓ y el receptor tiene correo, se
+      // envía el comprobante (PDF + XML). En segundo plano y con auditoría; nunca
+      // rompe ni bloquea la respuesta de emisión.
+      if (result.estado.estado === "aceptado" && datos.receptor?.correoElectronico) {
+        void entregaService
+          .entregarAlAceptar({
+            tenantId: request.user.tenantId,
+            clave: result.clave,
+            cedulaEmisor: datos.cedulaEmisor,
+            consecutivo: result.consecutivo,
+            correoReceptor: datos.receptor.correoElectronico,
+          })
+          .catch((err) => request.log.warn({ err }, "Fallo al entregar el comprobante al cliente"));
       }
 
       return {
@@ -184,4 +225,44 @@ export async function comprobanteRoutes(app: FastifyInstance): Promise<void> {
       updatedAt: record.updatedAt,
     };
   });
+
+  /** Reenvía el comprobante al cliente por correo (PDF + XML). */
+  app.post(
+    "/comprobante/:clave/reenviar",
+    { schema: comprobanteReenviarSchema, preHandler: app.requierePermiso(Permiso.Emitir) },
+    async (request, reply) => {
+      const clave = (request.params as { clave: string }).clave;
+      const record = await comprobanteRepository.buscar(clave);
+      if (!record) return reply.status(404).send({ error: "Comprobante no encontrado" });
+      if (!(await emisorDelTenant(request, reply, record.cedulaEmisor))) return;
+
+      const correo = z
+        .object({ correo: z.string().email().optional() })
+        .safeParse(request.body ?? {});
+      try {
+        const envio = await entregaService.reenviar(
+          request.user.tenantId,
+          clave,
+          correo.success ? correo.data.correo : undefined,
+        );
+        if (!envio) return reply.status(404).send({ error: "Comprobante no encontrado" });
+        return envio;
+      } catch (err) {
+        return reply.status(400).send({ error: (err as Error).message });
+      }
+    },
+  );
+
+  /** Historial de envíos del comprobante al cliente. */
+  app.get(
+    "/comprobante/:clave/envios",
+    { schema: comprobanteEnviosSchema, preHandler: app.requierePermiso(Permiso.Leer) },
+    async (request, reply) => {
+      const clave = (request.params as { clave: string }).clave;
+      const record = await comprobanteRepository.buscar(clave);
+      if (!record) return reply.status(404).send({ error: "Comprobante no encontrado" });
+      if (!(await emisorDelTenant(request, reply, record.cedulaEmisor))) return;
+      return entregaService.historial(request.user.tenantId, clave);
+    },
+  );
 }

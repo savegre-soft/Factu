@@ -126,6 +126,30 @@ export class UsuarioService {
     return sinHash(await this.usuarios.actualizar(id, cambios));
   }
 
+  /** El propio usuario actualiza su perfil (por ahora, su nombre). */
+  async actualizarPerfil(userId: string, cambios: { nombre?: string }): Promise<UsuarioPublico | null> {
+    const usuario = await this.usuarios.buscarPorId(userId);
+    if (!usuario) return null;
+    return sinHash(await this.usuarios.actualizar(userId, cambios));
+  }
+
+  /**
+   * El propio usuario cambia su contraseña. Verifica la actual antes de fijar la
+   * nueva. Devuelve `null` si el usuario no existe; lanza si la actual no coincide.
+   */
+  async cambiarPasswordPropia(
+    userId: string,
+    actual: string,
+    nueva: string,
+  ): Promise<UsuarioPublico | null> {
+    const usuario = await this.usuarios.buscarPorId(userId);
+    if (!usuario) return null;
+    if (!verifyPassword(actual, usuario.passwordHash)) {
+      throw new Error("La contraseña actual no es correcta");
+    }
+    return sinHash(await this.usuarios.actualizar(userId, { passwordHash: hashPassword(nueva) }));
+  }
+
   /** Fija una contraseña nueva para un usuario del tenant. */
   async cambiarPassword(
     tenantId: string,

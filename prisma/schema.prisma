@@ -24,6 +24,26 @@ model Tenant {
   recibidos DocumentoRecibido[]
   buzon     Buzon?
   borradores Borrador[]
+  smtp      SmtpSaliente?
+}
+
+/// Configuración de correo SALIENTE (SMTP) de una organización, para entregar los
+/// comprobantes al cliente. La contraseña se guarda CIFRADA (JSON de SecretoSellado).
+model SmtpSaliente {
+  tenantId        String   @id
+  tenant          Tenant   @relation(fields: [tenantId], references: [id])
+  host            String
+  port            Int      @default(587)
+  /// TLS directo (true, puerto 465) o STARTTLS (false, puerto 587).
+  secure          Boolean  @default(false)
+  usuario         String?
+  /// Contraseña cifrada (JSON de SecretoSellado). Opcional (SMTP sin auth).
+  passwordSellado String?
+  /// Remitente visible, ej. "Mi Empresa <facturas@empresa.cr>".
+  remitente       String
+  activo          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }
 
 /// Una factura guardada en borrador (aún no emitida). Guarda el estado del
@@ -123,6 +143,82 @@ model Emisor {
   @@index([tenantId])
 }
 
+/// Endpoint de webhook saliente de una organización: recibe por HTTP los eventos
+/// a los que está suscrito. El secreto (para firmar HMAC) se guarda cifrado.
+model Webhook {
+  id           String   @id
+  tenantId     String
+  url          String
+  /// Secreto para firmar (JSON de SecretoSellado). Opcional.
+  secretSellado String?
+  /// Eventos suscritos, ej. ["comprobante.aceptado","documento.recibido"].
+  eventos      String[]
+  activo       Boolean  @default(true)
+  lastStatus   Int?
+  lastError    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([tenantId])
+}
+
+/// Auditoría de cada intento de entrega de un webhook (historial + reintentos).
+model WebhookEntrega {
+  id         String   @id
+  tenantId   String
+  webhookId  String
+  evento     String
+  /// Cuerpo JSON enviado.
+  payload    String
+  /// pendiente | enviado | fallido
+  estado     String
+  statusCode Int?
+  error      String?
+  intentos   Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([tenantId, webhookId])
+  @@index([estado])
+}
+
+/// Mensaje de chat entre dos usuarios de una misma organización (tenant).
+model Mensaje {
+  id        String   @id
+  tenantId  String
+  /// Usuario que envía.
+  deId      String
+  /// Usuario que recibe.
+  paraId    String
+  texto     String
+  leido     Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, deId, paraId])
+  @@index([tenantId, paraId, leido])
+}
+
+/// Registro de auditoría de cada envío del comprobante al cliente por correo.
+/// Hay una fila por intento/destinatario (historial y reintentos).
+model EnvioComprobante {
+  id           String   @id
+  tenantId     String
+  /// Clave del comprobante emitido que se entrega.
+  clave        String
+  cedulaEmisor String
+  destinatario String
+  asunto       String
+  /// pendiente | enviado | fallido
+  estado       String
+  error        String?
+  intentos     Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([tenantId])
+  @@index([clave])
+}
+
 /// Un comprobante que NOS emitieron (factura recibida), para responder con el
 /// mensaje receptor. Se ingresa por carga manual, routing interno o correo.
 model DocumentoRecibido {
@@ -179,4 +275,47 @@ model Comprobante {
   updatedAt    DateTime @updatedAt
 
   @@index([cedulaEmisor])
+}
+
+/// Auditoría: acciones de negocio atribuibles a un usuario o integración.
+model RegistroAuditoria {
+  id          String   @id
+  tenantId    String
+  /// Id del usuario o API key que ejecutó la acción (null = sistema).
+  actorId     String?
+  /// Nombre legible del actor al momento de la acción.
+  actorNombre String
+  /// Tipo de actor: usuario | apikey | sistema.
+  actorTipo   String
+  /// Acción, ej. "comprobante.emitir", "webhook.crear", "auth.login".
+  accion      String
+  /// Recurso afectado, ej. "comprobante", "webhook".
+  recurso     String
+  /// Id/clave del recurso afectado, si aplica.
+  recursoId   String?
+  /// Detalle legible de la acción.
+  detalle     String?
+  ip          String?
+  createdAt   DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, accion])
+}
+
+/// Registro del sistema (logs técnicos): pollers, entregas, errores.
+model RegistroLog {
+  id        String   @id
+  /// Tenant asociado (null = evento global de la plataforma).
+  tenantId  String?
+  /// Nivel: info | warn | error.
+  nivel     String
+  /// Origen, ej. "webhooks", "entrega", "correo", "api", "auth".
+  origen    String
+  mensaje   String
+  /// Detalle adicional (mensaje de error, JSON, etc.).
+  detalle   String?
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+  @@index([nivel])
 }

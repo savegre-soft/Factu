@@ -12,9 +12,27 @@ import type {
   BuzonRecord,
   BuzonRepository,
   CambiosBorrador,
+  CambiosEnvio,
   CambiosUsuario,
+  EnvioComprobanteRecord,
+  EnvioComprobanteRepository,
+  MensajeRecord,
+  MensajeRepository,
   NuevoBorrador,
+  NuevoMensaje,
+  WebhookRecord,
+  WebhookRepository,
+  NuevoWebhook,
+  CambiosWebhook,
+  WebhookEntregaRecord,
+  WebhookEntregaRepository,
+  NuevaWebhookEntrega,
+  CambiosWebhookEntrega,
   NuevoBuzon,
+  NuevoEnvio,
+  NuevoSmtpSaliente,
+  SmtpSalienteRecord,
+  SmtpSalienteRepository,
   CertificadoSellado,
   ComprobanteRecord,
   ComprobanteRepository,
@@ -30,6 +48,14 @@ import type {
   TenantRepository,
   UsuarioRecord,
   UsuarioRepository,
+  AuditoriaRecord,
+  AuditoriaRepository,
+  NuevaAuditoria,
+  FiltroAuditoria,
+  LogRecord,
+  LogRepository,
+  NuevoLog,
+  FiltroLog,
 } from "./types.js";
 
 export class TenantRepositoryMemoria implements TenantRepository {
@@ -157,6 +183,218 @@ export class EmisorRepositoryMemoria implements EmisorRepository {
   }
 }
 
+export class WebhookRepositoryMemoria implements WebhookRepository {
+  private readonly hooks = new Map<string, WebhookRecord>();
+
+  async crear(input: NuevoWebhook): Promise<WebhookRecord> {
+    const ahora = new Date();
+    const record: WebhookRecord = {
+      ...input,
+      lastStatus: null,
+      lastError: null,
+      createdAt: ahora,
+      updatedAt: ahora,
+    };
+    this.hooks.set(input.id, record);
+    return record;
+  }
+
+  async actualizar(id: string, cambios: CambiosWebhook): Promise<WebhookRecord> {
+    const existente = this.hooks.get(id);
+    if (!existente) throw new Error(`Webhook "${id}" no encontrado`);
+    const record: WebhookRecord = { ...existente, ...cambios, updatedAt: new Date() };
+    this.hooks.set(id, record);
+    return record;
+  }
+
+  async buscarPorId(id: string): Promise<WebhookRecord | null> {
+    return this.hooks.get(id) ?? null;
+  }
+
+  async listarPorTenant(tenantId: string): Promise<WebhookRecord[]> {
+    return [...this.hooks.values()].filter((h) => h.tenantId === tenantId);
+  }
+
+  async listarActivosPorEvento(tenantId: string, evento: string): Promise<WebhookRecord[]> {
+    return [...this.hooks.values()].filter(
+      (h) => h.tenantId === tenantId && h.activo && h.eventos.includes(evento),
+    );
+  }
+
+  async eliminar(id: string): Promise<void> {
+    this.hooks.delete(id);
+  }
+}
+
+export class WebhookEntregaRepositoryMemoria implements WebhookEntregaRepository {
+  private readonly entregas = new Map<string, WebhookEntregaRecord>();
+
+  async crear(input: NuevaWebhookEntrega): Promise<WebhookEntregaRecord> {
+    const ahora = new Date();
+    const record: WebhookEntregaRecord = {
+      ...input,
+      statusCode: null,
+      error: null,
+      intentos: 0,
+      createdAt: ahora,
+      updatedAt: ahora,
+    };
+    this.entregas.set(input.id, record);
+    return record;
+  }
+
+  async actualizar(id: string, cambios: CambiosWebhookEntrega): Promise<WebhookEntregaRecord> {
+    const existente = this.entregas.get(id);
+    if (!existente) throw new Error(`Entrega de webhook "${id}" no encontrada`);
+    const record: WebhookEntregaRecord = { ...existente, ...cambios, updatedAt: new Date() };
+    this.entregas.set(id, record);
+    return record;
+  }
+
+  async buscarPorId(id: string): Promise<WebhookEntregaRecord | null> {
+    return this.entregas.get(id) ?? null;
+  }
+
+  async listarPorWebhook(tenantId: string, webhookId: string, limite: number): Promise<WebhookEntregaRecord[]> {
+    return [...this.entregas.values()]
+      .filter((e) => e.tenantId === tenantId && e.webhookId === webhookId)
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      .slice(0, limite);
+  }
+
+  async listarReintentables(maxIntentos: number): Promise<WebhookEntregaRecord[]> {
+    return [...this.entregas.values()].filter(
+      (e) => e.estado !== "enviado" && e.intentos < maxIntentos,
+    );
+  }
+}
+
+export class AuditoriaRepositoryMemoria implements AuditoriaRepository {
+  private readonly registros = new Map<string, AuditoriaRecord>();
+
+  async crear(input: NuevaAuditoria): Promise<AuditoriaRecord> {
+    const record: AuditoriaRecord = {
+      ...input,
+      actorId: input.actorId ?? null,
+      recursoId: input.recursoId ?? null,
+      detalle: input.detalle ?? null,
+      ip: input.ip ?? null,
+      createdAt: new Date(),
+    };
+    this.registros.set(input.id, record);
+    return record;
+  }
+
+  async listarPorTenant(tenantId: string, filtro?: FiltroAuditoria): Promise<AuditoriaRecord[]> {
+    return [...this.registros.values()]
+      .filter((r) => r.tenantId === tenantId && (!filtro?.accion || r.accion === filtro.accion))
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      .slice(0, filtro?.limite ?? 200);
+  }
+}
+
+export class LogRepositoryMemoria implements LogRepository {
+  private readonly registros = new Map<string, LogRecord>();
+
+  async crear(input: NuevoLog): Promise<LogRecord> {
+    const record: LogRecord = {
+      ...input,
+      tenantId: input.tenantId ?? null,
+      detalle: input.detalle ?? null,
+      createdAt: new Date(),
+    };
+    this.registros.set(input.id, record);
+    return record;
+  }
+
+  async listarPorTenant(tenantId: string, filtro?: FiltroLog): Promise<LogRecord[]> {
+    return [...this.registros.values()]
+      .filter(
+        (r) =>
+          r.tenantId === tenantId &&
+          (!filtro?.nivel || r.nivel === filtro.nivel) &&
+          (!filtro?.origen || r.origen === filtro.origen),
+      )
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      .slice(0, filtro?.limite ?? 200);
+  }
+}
+
+export class MensajeRepositoryMemoria implements MensajeRepository {
+  private readonly mensajes = new Map<string, MensajeRecord>();
+
+  async crear(input: NuevoMensaje): Promise<MensajeRecord> {
+    const record: MensajeRecord = { ...input, leido: false, createdAt: new Date() };
+    this.mensajes.set(input.id, record);
+    return record;
+  }
+
+  async listarConversacion(tenantId: string, a: string, b: string): Promise<MensajeRecord[]> {
+    return [...this.mensajes.values()]
+      .filter(
+        (m) =>
+          m.tenantId === tenantId &&
+          ((m.deId === a && m.paraId === b) || (m.deId === b && m.paraId === a)),
+      )
+      .sort((x, y) => x.createdAt.getTime() - y.createdAt.getTime());
+  }
+
+  async listarDeUsuario(tenantId: string, usuarioId: string): Promise<MensajeRecord[]> {
+    return [...this.mensajes.values()].filter(
+      (m) => m.tenantId === tenantId && (m.deId === usuarioId || m.paraId === usuarioId),
+    );
+  }
+
+  async marcarLeidos(tenantId: string, deId: string, paraId: string): Promise<void> {
+    for (const m of this.mensajes.values()) {
+      if (m.tenantId === tenantId && m.deId === deId && m.paraId === paraId && !m.leido) {
+        this.mensajes.set(m.id, { ...m, leido: true });
+      }
+    }
+  }
+}
+
+export class EnvioComprobanteRepositoryMemoria implements EnvioComprobanteRepository {
+  private readonly envios = new Map<string, EnvioComprobanteRecord>();
+
+  async crear(rec: NuevoEnvio): Promise<EnvioComprobanteRecord> {
+    const ahora = new Date();
+    const record: EnvioComprobanteRecord = {
+      ...rec,
+      error: null,
+      intentos: 0,
+      createdAt: ahora,
+      updatedAt: ahora,
+    };
+    this.envios.set(rec.id, record);
+    return record;
+  }
+
+  async actualizar(id: string, cambios: CambiosEnvio): Promise<EnvioComprobanteRecord> {
+    const existente = this.envios.get(id);
+    if (!existente) throw new Error(`Envío "${id}" no encontrado`);
+    const record: EnvioComprobanteRecord = { ...existente, ...cambios, updatedAt: new Date() };
+    this.envios.set(id, record);
+    return record;
+  }
+
+  async buscarPorId(id: string): Promise<EnvioComprobanteRecord | null> {
+    return this.envios.get(id) ?? null;
+  }
+
+  async listarPorClave(tenantId: string, clave: string): Promise<EnvioComprobanteRecord[]> {
+    return [...this.envios.values()]
+      .filter((e) => e.tenantId === tenantId && e.clave === clave)
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  }
+
+  async listarReintentables(maxIntentos: number): Promise<EnvioComprobanteRecord[]> {
+    return [...this.envios.values()].filter(
+      (e) => e.estado !== "enviado" && e.intentos < maxIntentos,
+    );
+  }
+}
+
 export class BorradorRepositoryMemoria implements BorradorRepository {
   private readonly borradores = new Map<string, BorradorRecord>();
 
@@ -227,6 +465,28 @@ export class BuzonRepositoryMemoria implements BuzonRepository {
 
   async eliminar(tenantId: string): Promise<void> {
     this.buzones.delete(tenantId);
+  }
+}
+
+export class SmtpSalienteRepositoryMemoria implements SmtpSalienteRepository {
+  private readonly configs = new Map<string, SmtpSalienteRecord>();
+
+  async upsert(input: NuevoSmtpSaliente): Promise<SmtpSalienteRecord> {
+    const ahora = new Date();
+    const existente = this.configs.get(input.tenantId);
+    const record: SmtpSalienteRecord = existente
+      ? { ...existente, ...input, updatedAt: ahora }
+      : { ...input, createdAt: ahora, updatedAt: ahora };
+    this.configs.set(input.tenantId, record);
+    return record;
+  }
+
+  async buscarPorTenant(tenantId: string): Promise<SmtpSalienteRecord | null> {
+    return this.configs.get(tenantId) ?? null;
+  }
+
+  async eliminar(tenantId: string): Promise<void> {
+    this.configs.delete(tenantId);
   }
 }
 

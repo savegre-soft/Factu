@@ -2,6 +2,8 @@
 import { env } from "./config/env.js";
 import { buildServer } from "./server.js";
 import { iniciarPollerCorreo } from "./services/correo/poller.js";
+import { iniciarPollerEntrega } from "./services/entrega/poller.js";
+import { iniciarPollerWebhooks } from "./services/webhooks/poller.js";
 
 const app = buildServer();
 
@@ -19,6 +21,10 @@ app.listen({ port: env.PORT, host: "0.0.0.0" }).then(
     app.log.info(`Documentación disponible en http://localhost:${env.PORT}/docs`);
     // Revisión periódica de los buzones de correo (XML entrantes).
     iniciarPollerCorreo((msg) => app.log.info(msg));
+    // Reintentos de entrega del comprobante al cliente (correo saliente).
+    iniciarPollerEntrega((msg) => app.log.info(msg));
+    // Reintentos de webhooks salientes (integraciones con sistemas externos).
+    iniciarPollerWebhooks((msg) => app.log.info(msg));
   },
   (err) => {
     app.log.error(err);
