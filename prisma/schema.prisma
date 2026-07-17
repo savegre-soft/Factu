@@ -1,0 +1,62 @@
+// Esquema inicial. Irá creciendo conforme avancen los módulos.
+// Docs: https://www.prisma.io/docs
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// Emisor de comprobantes electrónicos (la empresa que factura).
+model Emisor {
+  id             String   @id @default(uuid())
+  /// Cédula del emisor (física, jurídica, DIMEX, NITE)
+  identificacion String   @unique
+  nombre         String
+  /// Ruta o referencia al certificado .p12 (NUNCA guardar el archivo ni el PIN en texto plano en producción)
+  certificadoRef String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  comprobantes Comprobante[]
+}
+
+/// Un comprobante electrónico emitido (factura, tiquete, nota, etc.).
+model Comprobante {
+  id           String            @id @default(uuid())
+  emisorId     String
+  emisor       Emisor            @relation(fields: [emisorId], references: [id])
+  /// Clave numérica de 50 dígitos
+  clave        String            @unique
+  consecutivo  String
+  tipo         TipoComprobante
+  estado       EstadoComprobante @default(GENERADO)
+  /// XML firmado (base64) enviado a Hacienda
+  xmlFirmado   String?
+  /// XML de respuesta de Hacienda
+  respuestaXml String?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  @@index([emisorId])
+}
+
+enum TipoComprobante {
+  FACTURA_ELECTRONICA
+  NOTA_DEBITO
+  NOTA_CREDITO
+  TIQUETE_ELECTRONICO
+  MENSAJE_RECEPTOR
+}
+
+enum EstadoComprobante {
+  GENERADO
+  FIRMADO
+  ENVIADO
+  ACEPTADO
+  RECHAZADO
+  ERROR
+}

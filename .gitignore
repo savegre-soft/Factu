@@ -1,0 +1,17 @@
+node_modules/
+dist/
+*.log
+
+# Variables de entorno y secretos
+.env
+.env.local
+
+# Certificados / llaves criptográficas — NUNCA subir al repo
+*.p12
+*.pfx
+*.pem
+*.key
+certs/
+
+# Prisma
+prisma/*.db
