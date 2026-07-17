@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { tokenStore, HaciendaAuthError } from "../services/auth/index.js";
+import { authLoginSchema, authTokenSchema, authLogoutSchema } from "../plugins/schemas.js";
 
 const loginSchema = z.object({
   /** Clave bajo la que se cachean los tokens (normalmente la cédula del emisor). */
@@ -12,7 +13,7 @@ const loginSchema = z.object({
 const emisorSchema = z.object({ emisor: z.string().min(1) });
 
 export async function authRoutes(app: FastifyInstance): Promise<void> {
-  app.post("/auth/login", async (request, reply) => {
+  app.post("/auth/login", { schema: authLoginSchema }, async (request, reply) => {
     const parsed = loginSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: "Entrada inválida", detalles: parsed.error.issues });
@@ -37,7 +38,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // Devuelve un access token válido (renovando si hace falta). Útil para depurar.
-  app.post("/auth/token", async (request, reply) => {
+  app.post("/auth/token", { schema: authTokenSchema }, async (request, reply) => {
     const parsed = emisorSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: "Entrada inválida", detalles: parsed.error.issues });
@@ -50,7 +51,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
-  app.post("/auth/logout", async (request, reply) => {
+  app.post("/auth/logout", { schema: authLogoutSchema }, async (request, reply) => {
     const parsed = emisorSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: "Entrada inválida", detalles: parsed.error.issues });

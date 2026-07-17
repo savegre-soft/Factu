@@ -4,6 +4,7 @@ import {
   generarMensajeReceptorXml,
   RespuestaMensaje,
 } from "../domain/mensajeReceptor/mensajeReceptor.js";
+import { mensajeReceptorSchema } from "../plugins/schemas.js";
 
 const bodySchema = z.object({
   clave: z.string().length(50),
@@ -25,7 +26,7 @@ export async function mensajeReceptorRoutes(app: FastifyInstance): Promise<void>
    * El envío reutiliza el mismo cliente de recepción y firma que los demás
    * comprobantes (pendiente de confirmar los detalles del sobre para MR).
    */
-  app.post("/mensaje-receptor/xml", async (request, reply) => {
+  app.post("/mensaje-receptor/xml", { schema: mensajeReceptorSchema }, async (request, reply) => {
     const parsed = bodySchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: "Entrada inválida", detalles: parsed.error.issues });

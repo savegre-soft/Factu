@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { generarClave, TipoComprobante, SituacionComprobante } from "../domain/clave/clave.js";
+import { claveSchema } from "../plugins/schemas.js";
 
 const bodySchema = z.object({
   cedulaEmisor: z.string().regex(/^\d+$/),
@@ -12,7 +13,7 @@ const bodySchema = z.object({
 });
 
 export async function claveRoutes(app: FastifyInstance): Promise<void> {
-  app.post("/clave", async (request, reply) => {
+  app.post("/clave", { schema: claveSchema }, async (request, reply) => {
     const parsed = bodySchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: "Entrada inválida", detalles: parsed.error.issues });

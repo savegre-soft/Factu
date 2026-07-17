@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { generarP12Autofirmado } from "../services/firma/certificado.js";
 import { firmarXadesBes, verificarFirma } from "../services/firma/xadesSigner.js";
+import { firmaDemoSchema } from "../plugins/schemas.js";
 
 const demoSchema = z.object({
   /** XML a firmar (p. ej. el que devuelve /factura/xml). */
@@ -14,7 +15,7 @@ export async function firmaRoutes(app: FastifyInstance): Promise<void> {
    * vuelo y devuelve el XML firmado junto con el resultado de la verificación.
    * En producción, la firma usará el .p12 real del emisor (aún por integrar).
    */
-  app.post("/firma/demo", async (request, reply) => {
+  app.post("/firma/demo", { schema: firmaDemoSchema }, async (request, reply) => {
     const parsed = demoSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: "Entrada inválida", detalles: parsed.error.issues });

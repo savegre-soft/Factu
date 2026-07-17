@@ -1,0 +1,46 @@
+# Levanta la API + PostgreSQL para correr todo en la laptop:
+#   docker compose up --build
+# Luego: API en http://localhost:3000 y documentación en http://localhost:3000/docs
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: factu
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d factu"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PORT: 3000
+      NODE_ENV: production
+      # Persistencia en PostgreSQL
+      PERSISTENCIA: prisma
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/factu?schema=public
+      # ⚠️ Cambia esta llave en un entorno real (cifra los certificados en reposo)
+      FACTU_MASTER_KEY: cambia-esta-llave-maestra
+      # Ambiente de pruebas de Hacienda (ajusta las URLs a las oficiales del sandbox)
+      HACIENDA_ENV: stag
+      HACIENDA_IDP_URL: https://idp.comprobanteselectronicos.go.cr/auth/realms/rut-stag/protocol/openid-connect/token
+      HACIENDA_API_URL: https://api-sandbox.comprobanteselectronicos.go.cr/recepcion/v1
+      HACIENDA_CLIENT_ID: api-stag
+    # Crea/actualiza las tablas y arranca el servidor
+    command: sh -c "npx prisma db push --skip-generate && node dist/main.js"
+    ports:
+      - "3000:3000"
+
+volumes:
+  pgdata:

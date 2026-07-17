@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { emisorRepository } from "../infra/repos/index.js";
 import { certStore } from "../services/emisor/index.js";
+import { emisorRegistrarSchema, emisorCertificadoSchema } from "../plugins/schemas.js";
 
 const registrarSchema = z.object({
   cedula: z.string().regex(/^\d+$/),
@@ -17,7 +18,7 @@ const certificadoSchema = z.object({
 
 export async function emisorRoutes(app: FastifyInstance): Promise<void> {
   /** Registra (o actualiza) un emisor. */
-  app.post("/emisor", async (request, reply) => {
+  app.post("/emisor", { schema: emisorRegistrarSchema }, async (request, reply) => {
     const parsed = registrarSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: "Entrada inválida", detalles: parsed.error.issues });
@@ -27,7 +28,7 @@ export async function emisorRoutes(app: FastifyInstance): Promise<void> {
   });
 
   /** Sube el certificado .p12 del emisor (se guarda cifrado en reposo). */
-  app.post("/emisor/:cedula/certificado", async (request, reply) => {
+  app.post("/emisor/:cedula/certificado", { schema: emisorCertificadoSchema }, async (request, reply) => {
     const cedula = (request.params as { cedula: string }).cedula;
     const parsed = certificadoSchema.safeParse(request.body);
     if (!parsed.success) {

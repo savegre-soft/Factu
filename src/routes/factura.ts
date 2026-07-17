@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { facturaXmlSchema } from "../plugins/schemas.js";
 import {
   generarClave,
   TipoComprobante,
@@ -97,7 +98,7 @@ export const datosFacturaSchema = z.object({
 });
 
 export async function facturaRoutes(app: FastifyInstance): Promise<void> {
-  app.post("/factura/xml", async (request, reply) => {
+  app.post("/factura/xml", { schema: facturaXmlSchema }, async (request, reply) => {
     const parsed = datosFacturaSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: "Entrada inválida", detalles: parsed.error.issues });

@@ -1,5 +1,5 @@
-import Fastify from "fastify";
-import { env } from "./config/env.js";
+import Fastify, { type FastifyInstance } from "fastify";
+import { registrarSwagger } from "./plugins/swagger.js";
 import { healthRoutes } from "./routes/health.js";
 import { claveRoutes } from "./routes/clave.js";
 import { authRoutes } from "./routes/auth.js";
@@ -9,8 +9,13 @@ import { comprobanteRoutes } from "./routes/comprobante.js";
 import { mensajeReceptorRoutes } from "./routes/mensajeReceptor.js";
 import { emisorRoutes } from "./routes/emisor.js";
 
-export function buildServer() {
+/** Construye la instancia de Fastify con Swagger y todas las rutas registradas. */
+export function buildServer(): FastifyInstance {
   const app = Fastify({ logger: true });
+
+  // Swagger debe registrarse antes que las rutas para capturar sus esquemas.
+  registrarSwagger(app);
+
   app.register(healthRoutes);
   app.register(claveRoutes);
   app.register(authRoutes);
@@ -19,12 +24,6 @@ export function buildServer() {
   app.register(firmaRoutes);
   app.register(comprobanteRoutes);
   app.register(mensajeReceptorRoutes);
+
   return app;
 }
-
-const app = buildServer();
-
-app.listen({ port: env.PORT, host: "0.0.0.0" }).catch((err) => {
-  app.log.error(err);
-  process.exit(1);
-});

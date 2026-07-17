@@ -8,6 +8,7 @@ import { certStore } from "../services/emisor/index.js";
 import { comprobanteRepository } from "../infra/repos/index.js";
 import { TipoDocumento } from "../domain/factura/facturaXml.js";
 import { validarComprobante } from "../domain/validacion/validacion.js";
+import { comprobanteEnviarSchema, comprobanteGetSchema } from "../plugins/schemas.js";
 import type { DatosFactura } from "../services/hacienda/emision.js";
 
 /** Mapea el segmento de la ruta al tipo de documento. */
@@ -29,7 +30,7 @@ export async function comprobanteRoutes(app: FastifyInstance): Promise<void> {
    * ⚠️ Por ahora firma con un certificado autofirmado de PRUEBA. La carga del .p12
    * real del emisor es parte de la gestión de emisores (pendiente).
    */
-  app.post("/comprobante/:tipo/enviar", async (request, reply) => {
+  app.post("/comprobante/:tipo/enviar", { schema: comprobanteEnviarSchema }, async (request, reply) => {
     const tipoParam = (request.params as { tipo: string }).tipo;
     const tipo = RUTA_A_TIPO[tipoParam];
     if (!tipo) {
@@ -104,7 +105,7 @@ export async function comprobanteRoutes(app: FastifyInstance): Promise<void> {
   });
 
   /** Consulta un comprobante persistido por su clave. */
-  app.get("/comprobante/:clave", async (request, reply) => {
+  app.get("/comprobante/:clave", { schema: comprobanteGetSchema }, async (request, reply) => {
     const clave = (request.params as { clave: string }).clave;
     const record = await comprobanteRepository.buscar(clave);
     if (!record) return reply.status(404).send({ error: "Comprobante no encontrado" });

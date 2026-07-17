@@ -1,0 +1,17 @@
+node_modules
+dist
+.git
+.github
+.env
+.env.local
+*.log
+npm-debug.log*
+docs
+coverage
+
+# Nunca meter certificados en la imagen
+*.p12
+*.pfx
+*.pem
+*.key
+certs/

@@ -2,7 +2,9 @@
 // Docs: https://www.prisma.io/docs
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  // "native" para desarrollo local; "debian-openssl-3.0.x" para la imagen Docker.
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
 }
 
 datasource db {
