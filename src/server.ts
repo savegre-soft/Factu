@@ -7,12 +7,14 @@ import { facturaRoutes } from "./routes/factura.js";
 import { firmaRoutes } from "./routes/firma.js";
 import { comprobanteRoutes } from "./routes/comprobante.js";
 import { mensajeReceptorRoutes } from "./routes/mensajeReceptor.js";
+import { emisorRoutes } from "./routes/emisor.js";
 
 export function buildServer() {
   const app = Fastify({ logger: true });
   app.register(healthRoutes);
   app.register(claveRoutes);
   app.register(authRoutes);
+  app.register(emisorRoutes);
   app.register(facturaRoutes);
   app.register(firmaRoutes);
   app.register(comprobanteRoutes);

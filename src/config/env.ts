@@ -9,6 +9,10 @@ const schema = z.object({
   HACIENDA_IDP_URL: z.string().url().optional(),
   HACIENDA_API_URL: z.string().url().optional(),
   HACIENDA_CLIENT_ID: z.string().optional(),
+  /** Llave maestra para cifrar certificados en reposo. En producción es OBLIGATORIA. */
+  FACTU_MASTER_KEY: z.string().optional(),
+  /** Backend de persistencia: "memoria" (por defecto) o "prisma". */
+  PERSISTENCIA: z.enum(["memoria", "prisma"]).default("memoria"),
 });
 
 export const env = schema.parse(process.env);

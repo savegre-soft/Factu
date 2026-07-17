@@ -3,7 +3,9 @@ import { datosFacturaSchema } from "./factura.js";
 import { tokenStore } from "../services/auth/index.js";
 import { receptionClient, emitirComprobante } from "../services/hacienda/index.js";
 import { firmarXadesBes } from "../services/firma/xadesSigner.js";
-import { generarP12Autofirmado } from "../services/firma/certificado.js";
+import { generarP12Autofirmado, type Certificado } from "../services/firma/certificado.js";
+import { certStore } from "../services/emisor/index.js";
+import { comprobanteRepository } from "../infra/repos/index.js";
 import { TipoDocumento } from "../domain/factura/facturaXml.js";
 import type { DatosFactura } from "../services/hacienda/emision.js";
 
@@ -42,12 +44,20 @@ export async function comprobanteRoutes(app: FastifyInstance): Promise<void> {
     }
     const datos = parsed.data as DatosFactura;
 
-    // Certificado de prueba (reemplazar por el .p12 real del emisor).
-    const { certificado } = generarP12Autofirmado({
-      password: "demo",
-      commonName: datos.emisor.nombre,
-      cedula: datos.cedulaEmisor,
-    });
+    // Usa el certificado real del emisor si está cargado; si no, cae a uno
+    // autofirmado de PRUEBA (marcado en la respuesta).
+    let certificado: Certificado;
+    let certificadoDemo = false;
+    if (await certStore.tieneCertificado(datos.cedulaEmisor)) {
+      certificado = await certStore.obtenerCertificado(datos.cedulaEmisor);
+    } else {
+      certificado = generarP12Autofirmado({
+        password: "demo",
+        commonName: datos.emisor.nombre,
+        cedula: datos.cedulaEmisor,
+      }).certificado;
+      certificadoDemo = true;
+    }
 
     try {
       const result = await emitirComprobante(tipo, datos, {
@@ -57,6 +67,17 @@ export async function comprobanteRoutes(app: FastifyInstance): Promise<void> {
         certificado,
       });
 
+      // Persiste el comprobante con su estado final.
+      await comprobanteRepository.crear({
+        clave: result.clave,
+        cedulaEmisor: datos.cedulaEmisor,
+        tipo,
+        consecutivo: result.consecutivo,
+        estado: result.estado.estado,
+        xmlFirmado: result.xmlFirmado,
+        respuestaXml: result.estado.respuestaXml,
+      });
+
       return {
         tipo: tipoParam,
         clave: result.clave,
@@ -64,6 +85,7 @@ export async function comprobanteRoutes(app: FastifyInstance): Promise<void> {
         envio: result.envio,
         estado: result.estado.estado,
         respuestaXml: result.estado.respuestaXml,
+        certificadoDemo,
       };
     } catch (err) {
       request.log.error(err);
@@ -72,5 +94,21 @@ export async function comprobanteRoutes(app: FastifyInstance): Promise<void> {
         detalle: (err as Error).message,
       });
     }
+  });
+
+  /** Consulta un comprobante persistido por su clave. */
+  app.get("/comprobante/:clave", async (request, reply) => {
+    const clave = (request.params as { clave: string }).clave;
+    const record = await comprobanteRepository.buscar(clave);
+    if (!record) return reply.status(404).send({ error: "Comprobante no encontrado" });
+    return {
+      clave: record.clave,
+      tipo: record.tipo,
+      consecutivo: record.consecutivo,
+      estado: record.estado,
+      cedulaEmisor: record.cedulaEmisor,
+      createdAt: record.createdAt,
+      updatedAt: record.updatedAt,
+    };
   });
 }
