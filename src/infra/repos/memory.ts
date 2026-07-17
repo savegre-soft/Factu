@@ -7,14 +7,25 @@
 import type {
   ApiKeyRecord,
   ApiKeyRepository,
+  BorradorRecord,
+  BorradorRepository,
+  BuzonRecord,
+  BuzonRepository,
+  CambiosBorrador,
   CambiosUsuario,
+  NuevoBorrador,
+  NuevoBuzon,
   CertificadoSellado,
   ComprobanteRecord,
   ComprobanteRepository,
+  DocumentoRecibidoRecord,
+  DocumentoRecibidoRepository,
   EmisorRecord,
   EmisorRepository,
+  MensajeReceptorGuardado,
   NuevaApiKey,
   NuevoComprobante,
+  NuevoDocumentoRecibido,
   TenantRecord,
   TenantRepository,
   UsuarioRecord,
@@ -143,6 +154,129 @@ export class EmisorRepositoryMemoria implements EmisorRepository {
     const existente = this.emisores.get(cedula);
     if (!existente) throw new Error(`Emisor "${cedula}" no registrado`);
     this.emisores.set(cedula, { ...existente, certificado: cert, updatedAt: new Date() });
+  }
+}
+
+export class BorradorRepositoryMemoria implements BorradorRepository {
+  private readonly borradores = new Map<string, BorradorRecord>();
+
+  async crear(rec: NuevoBorrador): Promise<BorradorRecord> {
+    const ahora = new Date();
+    const record: BorradorRecord = { ...rec, createdAt: ahora, updatedAt: ahora };
+    this.borradores.set(rec.id, record);
+    return record;
+  }
+
+  async actualizar(id: string, cambios: CambiosBorrador): Promise<BorradorRecord> {
+    const existente = this.borradores.get(id);
+    if (!existente) throw new Error(`Borrador "${id}" no encontrado`);
+    const record: BorradorRecord = { ...existente, ...cambios, updatedAt: new Date() };
+    this.borradores.set(id, record);
+    return record;
+  }
+
+  async buscarPorId(id: string): Promise<BorradorRecord | null> {
+    return this.borradores.get(id) ?? null;
+  }
+
+  async listarPorTenant(tenantId: string): Promise<BorradorRecord[]> {
+    return [...this.borradores.values()]
+      .filter((b) => b.tenantId === tenantId)
+      .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+  }
+
+  async eliminar(id: string): Promise<void> {
+    this.borradores.delete(id);
+  }
+}
+
+export class BuzonRepositoryMemoria implements BuzonRepository {
+  private readonly buzones = new Map<string, BuzonRecord>();
+
+  async upsert(input: NuevoBuzon): Promise<BuzonRecord> {
+    const ahora = new Date();
+    const existente = this.buzones.get(input.tenantId);
+    const record: BuzonRecord = existente
+      ? { ...existente, ...input, updatedAt: ahora }
+      : { ...input, lastSyncAt: null, lastError: null, createdAt: ahora, updatedAt: ahora };
+    this.buzones.set(input.tenantId, record);
+    return record;
+  }
+
+  async buscarPorTenant(tenantId: string): Promise<BuzonRecord | null> {
+    return this.buzones.get(tenantId) ?? null;
+  }
+
+  async listarActivos(): Promise<BuzonRecord[]> {
+    return [...this.buzones.values()].filter((b) => b.activo);
+  }
+
+  async actualizarEstado(
+    tenantId: string,
+    estado: { lastSyncAt?: Date; lastError?: string | null },
+  ): Promise<void> {
+    const existente = this.buzones.get(tenantId);
+    if (!existente) return;
+    this.buzones.set(tenantId, {
+      ...existente,
+      lastSyncAt: estado.lastSyncAt ?? existente.lastSyncAt,
+      lastError: estado.lastError !== undefined ? estado.lastError : existente.lastError,
+      updatedAt: new Date(),
+    });
+  }
+
+  async eliminar(tenantId: string): Promise<void> {
+    this.buzones.delete(tenantId);
+  }
+}
+
+export class DocumentoRecibidoRepositoryMemoria implements DocumentoRecibidoRepository {
+  private readonly docs = new Map<string, DocumentoRecibidoRecord>();
+
+  async crear(rec: NuevoDocumentoRecibido): Promise<DocumentoRecibidoRecord> {
+    const ahora = new Date();
+    const record: DocumentoRecibidoRecord = {
+      ...rec,
+      mrRespuesta: null,
+      mrConsecutivo: null,
+      mrXml: null,
+      mrGeneradoAt: null,
+      createdAt: ahora,
+      updatedAt: ahora,
+    };
+    this.docs.set(rec.id, record);
+    return record;
+  }
+
+  async buscarPorId(id: string): Promise<DocumentoRecibidoRecord | null> {
+    return this.docs.get(id) ?? null;
+  }
+
+  async buscarPorClave(tenantId: string, clave: string): Promise<DocumentoRecibidoRecord | null> {
+    return (
+      [...this.docs.values()].find((d) => d.tenantId === tenantId && d.clave === clave) ?? null
+    );
+  }
+
+  async listarPorTenant(tenantId: string): Promise<DocumentoRecibidoRecord[]> {
+    return [...this.docs.values()].filter((d) => d.tenantId === tenantId);
+  }
+
+  async guardarMensajeReceptor(id: string, mr: MensajeReceptorGuardado): Promise<void> {
+    const existente = this.docs.get(id);
+    if (!existente) throw new Error(`Documento recibido "${id}" no encontrado`);
+    this.docs.set(id, {
+      ...existente,
+      mrRespuesta: mr.respuesta,
+      mrConsecutivo: mr.consecutivo,
+      mrXml: mr.xml,
+      mrGeneradoAt: new Date(),
+      updatedAt: new Date(),
+    });
+  }
+
+  async eliminar(id: string): Promise<void> {
+    this.docs.delete(id);
   }
 }
 

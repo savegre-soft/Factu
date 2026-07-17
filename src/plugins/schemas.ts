@@ -129,6 +129,11 @@ export const healthSchema = {
   summary: "Estado del servicio",
 } as const;
 
+export const ambienteSchema = {
+  tags: ["Utilidades"],
+  summary: "Ambiente de Hacienda activo (stag/prod) y estado de la firma",
+} as const;
+
 export const claveSchema = {
   tags: ["Utilidades"],
   summary: "Genera la clave numérica de 50 dígitos",
@@ -394,15 +399,68 @@ export const comprobanteEnviarSchema = {
   body: datosComprobante,
 } as const;
 
+export const comprobantesListarSchema = {
+  tags: ["Comprobantes"],
+  summary: "Lista los comprobantes emitidos del tenant (facturas enviadas)",
+  security: bearer,
+} as const;
+
 export const comprobanteGetSchema = {
   tags: ["Comprobantes"],
-  summary: "Consulta un comprobante persistido por su clave",
+  summary: "Consulta un comprobante persistido por su clave (incluye el XML firmado)",
   security: bearer,
   params: {
     type: "object",
     properties: { clave: { type: "string" } },
     required: ["clave"],
   },
+} as const;
+
+const borradorBody = {
+  type: "object",
+  properties: {
+    tipo: { type: "string", enum: ["factura", "tiquete", "nota-credito", "nota-debito"] },
+    cedulaEmisor: { type: "string" },
+    receptorNombre: { type: "string" },
+    total: { type: "number" },
+    datos: { type: "object", additionalProperties: true, description: "Estado del formulario de emisión" },
+  },
+  required: ["tipo", "datos"],
+} as const;
+
+export const borradorCrearSchema = {
+  tags: ["Borradores"],
+  summary: "Guarda una factura en borrador",
+  security: bearer,
+  body: borradorBody,
+} as const;
+
+export const borradorActualizarSchema = {
+  tags: ["Borradores"],
+  summary: "Actualiza un borrador",
+  security: bearer,
+  params: { type: "object", properties: { id: { type: "string" } }, required: ["id"] },
+  body: borradorBody,
+} as const;
+
+export const borradorListarSchema = {
+  tags: ["Borradores"],
+  summary: "Lista los borradores del tenant",
+  security: bearer,
+} as const;
+
+export const borradorGetSchema = {
+  tags: ["Borradores"],
+  summary: "Detalle de un borrador (con los datos del formulario)",
+  security: bearer,
+  params: { type: "object", properties: { id: { type: "string" } }, required: ["id"] },
+} as const;
+
+export const borradorEliminarSchema = {
+  tags: ["Borradores"],
+  summary: "Elimina un borrador",
+  security: bearer,
+  params: { type: "object", properties: { id: { type: "string" } }, required: ["id"] },
 } as const;
 
 export const mensajeReceptorSchema = {
@@ -433,6 +491,111 @@ export const firmaDemoSchema = {
     type: "object",
     properties: { xml: { type: "string" } },
     required: ["xml"],
+  },
+} as const;
+
+const buzonBody = {
+  type: "object",
+  properties: {
+    host: { type: "string", description: "Servidor IMAP, ej. imap.gmail.com" },
+    port: { type: "number", description: "Puerto IMAP, ej. 993" },
+    secure: { type: "boolean", description: "TLS directo (993)" },
+    usuario: { type: "string", description: "Usuario/correo" },
+    password: { type: "string", description: "Contraseña (o app password)" },
+    carpeta: { type: "string", description: "Carpeta a revisar (INBOX)" },
+    activo: { type: "boolean" },
+  },
+  required: ["host", "port", "usuario", "password"],
+} as const;
+
+export const correoGetSchema = {
+  tags: ["Correo"],
+  summary: "Configuración del buzón de correo (sin contraseña)",
+  security: bearer,
+} as const;
+
+export const correoGuardarSchema = {
+  tags: ["Correo"],
+  summary: "Guarda la configuración del buzón (contraseña cifrada en reposo)",
+  security: bearer,
+  body: buzonBody,
+} as const;
+
+export const correoEliminarSchema = {
+  tags: ["Correo"],
+  summary: "Elimina la configuración del buzón",
+  security: bearer,
+} as const;
+
+export const correoProbarSchema = {
+  tags: ["Correo"],
+  summary: "Prueba la conexión IMAP",
+  security: bearer,
+  body: buzonBody,
+} as const;
+
+export const correoSincronizarSchema = {
+  tags: ["Correo"],
+  summary: "Revisa el buzón ahora y registra los XML recibidos",
+  security: bearer,
+} as const;
+
+export const recibidoCrearSchema = {
+  tags: ["Recibidos"],
+  summary: "Registra un comprobante recibido a partir de su XML",
+  description: "Deduplica por clave dentro del tenant. Úsalo para las facturas que te emiten.",
+  security: bearer,
+  body: {
+    type: "object",
+    properties: { xml: { type: "string", description: "XML del comprobante recibido (v4.4)" } },
+    required: ["xml"],
+  },
+} as const;
+
+export const recibidoListarSchema = {
+  tags: ["Recibidos"],
+  summary: "Lista los documentos recibidos del tenant (sin XML)",
+  security: bearer,
+} as const;
+
+export const recibidoGetSchema = {
+  tags: ["Recibidos"],
+  summary: "Detalle de un documento recibido (con XML y mensaje receptor)",
+  security: bearer,
+  params: {
+    type: "object",
+    properties: { id: { type: "string" } },
+    required: ["id"],
+  },
+} as const;
+
+export const recibidoEliminarSchema = {
+  tags: ["Recibidos"],
+  summary: "Elimina un documento recibido",
+  security: bearer,
+  params: {
+    type: "object",
+    properties: { id: { type: "string" } },
+    required: ["id"],
+  },
+} as const;
+
+export const recibidoMensajeReceptorSchema = {
+  tags: ["Recibidos"],
+  summary: "Genera y guarda el mensaje receptor de un documento recibido",
+  security: bearer,
+  params: {
+    type: "object",
+    properties: { id: { type: "string" } },
+    required: ["id"],
+  },
+  body: {
+    type: "object",
+    properties: {
+      respuesta: { type: "string", enum: ["1", "2", "3"], description: "1 aceptado, 2 parcial, 3 rechazado" },
+      detalleMensaje: { type: "string" },
+    },
+    required: ["respuesta"],
   },
 } as const;
 

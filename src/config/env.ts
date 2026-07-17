@@ -21,6 +21,13 @@ const schema = z.object({
   HACIENDA_POLICY_HASH: z.string().optional(),
   /** Backend de persistencia: "memoria" (por defecto) o "prisma". */
   PERSISTENCIA: z.enum(["memoria", "prisma"]).default("memoria"),
+  /** Revisar automáticamente los buzones de correo en busca de XML. */
+  CORREO_POLL_ENABLED: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((v) => v === "true"),
+  /** Cada cuántos minutos revisar los buzones (mínimo 1). */
+  CORREO_POLL_MINUTOS: z.coerce.number().int().min(1).default(5),
 });
 
 export const env = schema.parse(process.env);

@@ -5,6 +5,9 @@
 import { env } from "../../config/env.js";
 import {
   ApiKeyRepositoryMemoria,
+  BorradorRepositoryMemoria,
+  BuzonRepositoryMemoria,
+  DocumentoRecibidoRepositoryMemoria,
   EmisorRepositoryMemoria,
   ComprobanteRepositoryMemoria,
   TenantRepositoryMemoria,
@@ -12,6 +15,9 @@ import {
 } from "./memory.js";
 import type {
   ApiKeyRepository,
+  BorradorRepository,
+  BuzonRepository,
+  DocumentoRecibidoRepository,
   EmisorRepository,
   ComprobanteRepository,
   TenantRepository,
@@ -23,11 +29,17 @@ let comprobanteRepo: ComprobanteRepository;
 let tenantRepo: TenantRepository;
 let usuarioRepo: UsuarioRepository;
 let apiKeyRepo: ApiKeyRepository;
+let recibidoRepo: DocumentoRecibidoRepository;
+let buzonRepo: BuzonRepository;
+let borradorRepo: BorradorRepository;
 
 if (env.PERSISTENCIA === "prisma") {
   // Import perezoso para no exigir el cliente de Prisma cuando se usa memoria.
   const {
     ApiKeyRepositoryPrisma,
+    BorradorRepositoryPrisma,
+    BuzonRepositoryPrisma,
+    DocumentoRecibidoRepositoryPrisma,
     EmisorRepositoryPrisma,
     ComprobanteRepositoryPrisma,
     TenantRepositoryPrisma,
@@ -39,12 +51,18 @@ if (env.PERSISTENCIA === "prisma") {
   tenantRepo = new TenantRepositoryPrisma(prisma);
   usuarioRepo = new UsuarioRepositoryPrisma(prisma);
   apiKeyRepo = new ApiKeyRepositoryPrisma(prisma);
+  recibidoRepo = new DocumentoRecibidoRepositoryPrisma(prisma);
+  buzonRepo = new BuzonRepositoryPrisma(prisma);
+  borradorRepo = new BorradorRepositoryPrisma(prisma);
 } else {
   emisorRepo = new EmisorRepositoryMemoria();
   comprobanteRepo = new ComprobanteRepositoryMemoria();
   tenantRepo = new TenantRepositoryMemoria();
   usuarioRepo = new UsuarioRepositoryMemoria();
   apiKeyRepo = new ApiKeyRepositoryMemoria();
+  recibidoRepo = new DocumentoRecibidoRepositoryMemoria();
+  buzonRepo = new BuzonRepositoryMemoria();
+  borradorRepo = new BorradorRepositoryMemoria();
 }
 
 export const emisorRepository = emisorRepo;
@@ -52,6 +70,9 @@ export const comprobanteRepository = comprobanteRepo;
 export const tenantRepository = tenantRepo;
 export const usuarioRepository = usuarioRepo;
 export const apiKeyRepository = apiKeyRepo;
+export const documentoRecibidoRepository = recibidoRepo;
+export const buzonRepository = buzonRepo;
+export const borradorRepository = borradorRepo;
 
 /** Llave maestra efectiva (con aviso si no se configuró en desarrollo). */
 export function masterKey(): string {

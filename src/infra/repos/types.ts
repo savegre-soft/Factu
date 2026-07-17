@@ -12,6 +12,43 @@ export interface CertificadoSellado {
   password: SecretoSellado;
 }
 
+// ---- Buzón de correo (IMAP) por organización ----
+
+export interface BuzonRecord {
+  tenantId: string;
+  host: string;
+  port: number;
+  secure: boolean;
+  usuario: string;
+  /** Contraseña cifrada en reposo. */
+  passwordSellado: SecretoSellado;
+  carpeta: string;
+  activo: boolean;
+  lastSyncAt: Date | null;
+  lastError: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface NuevoBuzon {
+  tenantId: string;
+  host: string;
+  port: number;
+  secure: boolean;
+  usuario: string;
+  passwordSellado: SecretoSellado;
+  carpeta: string;
+  activo: boolean;
+}
+
+export interface BuzonRepository {
+  upsert(input: NuevoBuzon): Promise<BuzonRecord>;
+  buscarPorTenant(tenantId: string): Promise<BuzonRecord | null>;
+  listarActivos(): Promise<BuzonRecord[]>;
+  actualizarEstado(tenantId: string, estado: { lastSyncAt?: Date; lastError?: string | null }): Promise<void>;
+  eliminar(tenantId: string): Promise<void>;
+}
+
 // ---- Tenants y usuarios (control de acceso) ----
 
 export interface TenantRecord {
@@ -86,6 +123,44 @@ export interface ApiKeyRepository {
   revocar(id: string): Promise<void>;
 }
 
+// ---- Borradores de factura ----
+
+export interface BorradorRecord {
+  id: string;
+  tenantId: string;
+  tipo: string;
+  cedulaEmisor: string | null;
+  receptorNombre: string | null;
+  total: number;
+  /** Estado del formulario de emisión, serializado a JSON. */
+  datos: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface NuevoBorrador {
+  id: string;
+  tenantId: string;
+  tipo: string;
+  cedulaEmisor: string | null;
+  receptorNombre: string | null;
+  total: number;
+  datos: string;
+}
+
+export type CambiosBorrador = Pick<
+  BorradorRecord,
+  "tipo" | "cedulaEmisor" | "receptorNombre" | "total" | "datos"
+>;
+
+export interface BorradorRepository {
+  crear(rec: NuevoBorrador): Promise<BorradorRecord>;
+  actualizar(id: string, cambios: CambiosBorrador): Promise<BorradorRecord>;
+  buscarPorId(id: string): Promise<BorradorRecord | null>;
+  listarPorTenant(tenantId: string): Promise<BorradorRecord[]>;
+  eliminar(id: string): Promise<void>;
+}
+
 // ---- Emisores ----
 
 export interface EmisorRecord {
@@ -133,4 +208,51 @@ export interface ComprobanteRepository {
   actualizarEstado(clave: string, estado: string, respuestaXml?: string): Promise<void>;
   buscar(clave: string): Promise<ComprobanteRecord | null>;
   listarPorEmisor(cedula: string): Promise<ComprobanteRecord[]>;
+}
+
+// ---- Documentos recibidos (facturas que nos emiten → mensaje receptor) ----
+
+export interface DocumentoRecibidoRecord {
+  id: string;
+  tenantId: string;
+  clave: string;
+  tipo: string;
+  numeroConsecutivo: string;
+  fechaEmision: Date;
+  emisorNombre: string;
+  emisorCedula: string;
+  receptorCedula: string;
+  receptorNombre: string | null;
+  moneda: string;
+  totalComprobante: number;
+  totalImpuesto: number;
+  xml: string;
+  /** manual | interno | correo */
+  origen: string;
+  mrRespuesta: string | null;
+  mrConsecutivo: string | null;
+  mrXml: string | null;
+  mrGeneradoAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export type NuevoDocumentoRecibido = Omit<
+  DocumentoRecibidoRecord,
+  "id" | "mrRespuesta" | "mrConsecutivo" | "mrXml" | "mrGeneradoAt" | "createdAt" | "updatedAt"
+> & { id: string };
+
+export interface MensajeReceptorGuardado {
+  respuesta: string;
+  consecutivo: string;
+  xml: string;
+}
+
+export interface DocumentoRecibidoRepository {
+  crear(rec: NuevoDocumentoRecibido): Promise<DocumentoRecibidoRecord>;
+  buscarPorId(id: string): Promise<DocumentoRecibidoRecord | null>;
+  buscarPorClave(tenantId: string, clave: string): Promise<DocumentoRecibidoRecord | null>;
+  listarPorTenant(tenantId: string): Promise<DocumentoRecibidoRecord[]>;
+  guardarMensajeReceptor(id: string, mr: MensajeReceptorGuardado): Promise<void>;
+  eliminar(id: string): Promise<void>;
 }

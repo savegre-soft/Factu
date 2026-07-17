@@ -8,17 +8,29 @@
  */
 import { PrismaClient } from "@prisma/client";
 import type { Rol } from "../../domain/auth/roles.js";
+import type { SecretoSellado } from "../crypto/secretBox.js";
 import type {
   ApiKeyRecord,
   ApiKeyRepository,
+  BorradorRecord,
+  BorradorRepository,
+  BuzonRecord,
+  BuzonRepository,
+  CambiosBorrador,
   CambiosUsuario,
+  NuevoBorrador,
+  NuevoBuzon,
   CertificadoSellado,
   ComprobanteRecord,
   ComprobanteRepository,
+  DocumentoRecibidoRecord,
+  DocumentoRecibidoRepository,
   EmisorRecord,
   EmisorRepository,
+  MensajeReceptorGuardado,
   NuevaApiKey,
   NuevoComprobante,
+  NuevoDocumentoRecibido,
   TenantRecord,
   TenantRepository,
   UsuarioRecord,
@@ -119,6 +131,131 @@ export class ApiKeyRepositoryPrisma implements ApiKeyRepository {
 
   async revocar(id: string): Promise<void> {
     await this.db.apiKey.update({ where: { id }, data: { revokedAt: new Date() } });
+  }
+}
+
+type BuzonRow = {
+  tenantId: string;
+  host: string;
+  port: number;
+  secure: boolean;
+  usuario: string;
+  passwordSellado: string;
+  carpeta: string;
+  activo: boolean;
+  lastSyncAt: Date | null;
+  lastError: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+function aBuzonRecord(row: BuzonRow): BuzonRecord {
+  return { ...row, passwordSellado: JSON.parse(row.passwordSellado) as SecretoSellado };
+}
+
+export class BorradorRepositoryPrisma implements BorradorRepository {
+  constructor(private readonly db: PrismaClient) {}
+
+  async crear(rec: NuevoBorrador): Promise<BorradorRecord> {
+    return this.db.borrador.create({ data: rec });
+  }
+
+  async actualizar(id: string, cambios: CambiosBorrador): Promise<BorradorRecord> {
+    return this.db.borrador.update({ where: { id }, data: cambios });
+  }
+
+  async buscarPorId(id: string): Promise<BorradorRecord | null> {
+    return this.db.borrador.findUnique({ where: { id } });
+  }
+
+  async listarPorTenant(tenantId: string): Promise<BorradorRecord[]> {
+    return this.db.borrador.findMany({ where: { tenantId }, orderBy: { updatedAt: "desc" } });
+  }
+
+  async eliminar(id: string): Promise<void> {
+    await this.db.borrador.delete({ where: { id } });
+  }
+}
+
+export class BuzonRepositoryPrisma implements BuzonRepository {
+  constructor(private readonly db: PrismaClient) {}
+
+  async upsert(input: NuevoBuzon): Promise<BuzonRecord> {
+    const data = {
+      host: input.host,
+      port: input.port,
+      secure: input.secure,
+      usuario: input.usuario,
+      passwordSellado: JSON.stringify(input.passwordSellado),
+      carpeta: input.carpeta,
+      activo: input.activo,
+    };
+    const row = await this.db.buzon.upsert({
+      where: { tenantId: input.tenantId },
+      create: { tenantId: input.tenantId, ...data },
+      update: data,
+    });
+    return aBuzonRecord(row);
+  }
+
+  async buscarPorTenant(tenantId: string): Promise<BuzonRecord | null> {
+    const row = await this.db.buzon.findUnique({ where: { tenantId } });
+    return row ? aBuzonRecord(row) : null;
+  }
+
+  async listarActivos(): Promise<BuzonRecord[]> {
+    const rows = await this.db.buzon.findMany({ where: { activo: true } });
+    return rows.map(aBuzonRecord);
+  }
+
+  async actualizarEstado(
+    tenantId: string,
+    estado: { lastSyncAt?: Date; lastError?: string | null },
+  ): Promise<void> {
+    await this.db.buzon.update({ where: { tenantId }, data: estado });
+  }
+
+  async eliminar(tenantId: string): Promise<void> {
+    await this.db.buzon.delete({ where: { tenantId } });
+  }
+}
+
+export class DocumentoRecibidoRepositoryPrisma implements DocumentoRecibidoRepository {
+  constructor(private readonly db: PrismaClient) {}
+
+  async crear(rec: NuevoDocumentoRecibido): Promise<DocumentoRecibidoRecord> {
+    return this.db.documentoRecibido.create({ data: rec });
+  }
+
+  async buscarPorId(id: string): Promise<DocumentoRecibidoRecord | null> {
+    return this.db.documentoRecibido.findUnique({ where: { id } });
+  }
+
+  async buscarPorClave(tenantId: string, clave: string): Promise<DocumentoRecibidoRecord | null> {
+    return this.db.documentoRecibido.findUnique({ where: { tenantId_clave: { tenantId, clave } } });
+  }
+
+  async listarPorTenant(tenantId: string): Promise<DocumentoRecibidoRecord[]> {
+    return this.db.documentoRecibido.findMany({
+      where: { tenantId },
+      orderBy: { createdAt: "desc" },
+    });
+  }
+
+  async guardarMensajeReceptor(id: string, mr: MensajeReceptorGuardado): Promise<void> {
+    await this.db.documentoRecibido.update({
+      where: { id },
+      data: {
+        mrRespuesta: mr.respuesta,
+        mrConsecutivo: mr.consecutivo,
+        mrXml: mr.xml,
+        mrGeneradoAt: new Date(),
+      },
+    });
+  }
+
+  async eliminar(id: string): Promise<void> {
+    await this.db.documentoRecibido.delete({ where: { id } });
   }
 }
 

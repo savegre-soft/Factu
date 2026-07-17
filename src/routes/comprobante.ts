@@ -5,10 +5,15 @@ import { receptionClient, emitirComprobante } from "../services/hacienda/index.j
 import { firmar } from "../services/firma/index.js";
 import { generarP12Autofirmado, type Certificado } from "../services/firma/certificado.js";
 import { certStore } from "../services/emisor/index.js";
-import { comprobanteRepository } from "../infra/repos/index.js";
+import { comprobanteRepository, emisorRepository } from "../infra/repos/index.js";
+import { documentosRecibidosService } from "../services/documentosRecibidos/index.js";
 import { TipoDocumento } from "../domain/factura/facturaXml.js";
 import { validarComprobante } from "../domain/validacion/validacion.js";
-import { comprobanteEnviarSchema, comprobanteGetSchema } from "../plugins/schemas.js";
+import {
+  comprobanteEnviarSchema,
+  comprobanteGetSchema,
+  comprobantesListarSchema,
+} from "../plugins/schemas.js";
 import { Permiso } from "../domain/auth/roles.js";
 import { emisorDelTenant } from "./_guards.js";
 import type { DatosFactura } from "../services/hacienda/emision.js";
@@ -94,6 +99,25 @@ export async function comprobanteRoutes(app: FastifyInstance): Promise<void> {
         respuestaXml: result.estado.respuestaXml,
       });
 
+      // Routing interno: si el receptor es un emisor registrado en Factu, el
+      // comprobante aparece en sus "documentos recibidos" para que responda con
+      // el mensaje receptor. Nunca debe romper la emisión.
+      const cedulaReceptor = datos.receptor?.identificacion?.numero;
+      if (cedulaReceptor) {
+        try {
+          const emisorReceptor = await emisorRepository.buscar(cedulaReceptor);
+          if (emisorReceptor) {
+            await documentosRecibidosService.registrarDesdeXml(
+              emisorReceptor.tenantId,
+              result.xmlFirmado,
+              "interno",
+            );
+          }
+        } catch (err) {
+          request.log.warn({ err }, "No se pudo registrar el documento recibido (routing interno)");
+        }
+      }
+
       return {
         tipo: tipoParam,
         clave: result.clave,
@@ -112,6 +136,32 @@ export async function comprobanteRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
+  /** Lista los comprobantes emitidos del tenant (todos sus emisores). */
+  app.get(
+    "/comprobantes",
+    { schema: comprobantesListarSchema, preHandler: app.requierePermiso(Permiso.Leer) },
+    async (request) => {
+      const emisores = await emisorRepository.listarPorTenant(request.user.tenantId);
+      const porEmisor = await Promise.all(
+        emisores.map((e) => comprobanteRepository.listarPorEmisor(e.cedula)),
+      );
+      const nombres = new Map(emisores.map((e) => [e.cedula, e.nombre]));
+      return porEmisor
+        .flat()
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+        .map((c) => ({
+          clave: c.clave,
+          tipo: c.tipo,
+          consecutivo: c.consecutivo,
+          estado: c.estado,
+          cedulaEmisor: c.cedulaEmisor,
+          emisorNombre: nombres.get(c.cedulaEmisor) ?? "",
+          createdAt: c.createdAt,
+          updatedAt: c.updatedAt,
+        }));
+    },
+  );
+
   /** Consulta un comprobante persistido por su clave (dentro del tenant). */
   app.get(
     "/comprobante/:clave",
@@ -128,6 +178,8 @@ export async function comprobanteRoutes(app: FastifyInstance): Promise<void> {
       consecutivo: record.consecutivo,
       estado: record.estado,
       cedulaEmisor: record.cedulaEmisor,
+      xmlFirmado: record.xmlFirmado ?? null,
+      respuestaXml: record.respuestaXml ?? null,
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
     };

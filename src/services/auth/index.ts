@@ -2,20 +2,21 @@
  * Punto de composición del módulo de autenticación: crea el cliente de Hacienda
  * y un TokenStore compartido a partir de la configuración de entorno.
  */
-import { env } from "../../config/env.js";
+import { configHacienda } from "../../config/hacienda.js";
 import { HaciendaAuthClient } from "./haciendaAuth.js";
 import { TokenStore } from "./tokenStore.js";
 
-if (!env.HACIENDA_IDP_URL) {
-  // No abortamos el arranque: permite levantar el server sin credenciales aún,
-  // pero cualquier intento de login fallará con un mensaje claro.
+if (configHacienda.ambiente === "prod" && !configHacienda.politicaFirma) {
   // eslint-disable-next-line no-console
-  console.warn("[auth] HACIENDA_IDP_URL no está configurada; el login no funcionará.");
+  console.warn(
+    "[hacienda] Ambiente PROD sin política de firma (HACIENDA_POLICY_URL/HASH): " +
+      "la firma se generará como XAdES-BES y Hacienda la rechazará.",
+  );
 }
 
 export const haciendaAuth = new HaciendaAuthClient({
-  idpTokenUrl: env.HACIENDA_IDP_URL ?? "",
-  clientId: env.HACIENDA_CLIENT_ID ?? (env.HACIENDA_ENV === "prod" ? "api-prod" : "api-stag"),
+  idpTokenUrl: configHacienda.idpTokenUrl,
+  clientId: configHacienda.clientId,
 });
 
 export const tokenStore = new TokenStore(haciendaAuth);

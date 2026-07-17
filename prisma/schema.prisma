@@ -21,6 +21,49 @@ model Tenant {
   usuarios  Usuario[]
   emisores  Emisor[]
   apiKeys   ApiKey[]
+  recibidos DocumentoRecibido[]
+  buzon     Buzon?
+  borradores Borrador[]
+}
+
+/// Una factura guardada en borrador (aún no emitida). Guarda el estado del
+/// formulario de emisión (JSON) para retomarla luego.
+model Borrador {
+  id             String   @id
+  tenantId       String
+  tenant         Tenant   @relation(fields: [tenantId], references: [id])
+  /// factura | tiquete | nota-credito | nota-debito
+  tipo           String
+  cedulaEmisor   String?
+  receptorNombre String?
+  total          Float    @default(0)
+  /// Estado del formulario de emisión, serializado a JSON.
+  datos          String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([tenantId])
+}
+
+/// Buzón de correo (IMAP) de una organización, del que se leen los XML que le
+/// emiten. La contraseña se guarda CIFRADA (JSON de SecretoSellado).
+model Buzon {
+  tenantId       String    @id
+  tenant         Tenant    @relation(fields: [tenantId], references: [id])
+  host           String
+  port           Int
+  /// TLS directo (true, típico puerto 993) o STARTTLS/none.
+  secure         Boolean   @default(true)
+  usuario        String
+  /// Contraseña cifrada (JSON de SecretoSellado). NUNCA en texto plano.
+  passwordSellado String
+  /// Carpeta a revisar (por defecto INBOX).
+  carpeta        String    @default("INBOX")
+  activo         Boolean   @default(true)
+  lastSyncAt     DateTime?
+  lastError      String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 }
 
 /// Usuario que accede a la API, dentro de un tenant y con un rol.
@@ -78,6 +121,43 @@ model Emisor {
   comprobantes Comprobante[]
 
   @@index([tenantId])
+}
+
+/// Un comprobante que NOS emitieron (factura recibida), para responder con el
+/// mensaje receptor. Se ingresa por carga manual, routing interno o correo.
+model DocumentoRecibido {
+  id                 String   @id
+  tenantId           String
+  tenant             Tenant   @relation(fields: [tenantId], references: [id])
+  /// Clave de 50 dígitos del comprobante recibido.
+  clave              String
+  /// Tipo: FE, TE, NC, ND.
+  tipo               String
+  numeroConsecutivo  String
+  fechaEmision       DateTime
+  emisorNombre       String
+  emisorCedula       String
+  /// Cédula del receptor (uno de nuestros emisores).
+  receptorCedula     String
+  receptorNombre     String?
+  moneda             String
+  totalComprobante   Float
+  totalImpuesto      Float
+  /// XML original del comprobante recibido.
+  xml                String
+  /// Origen del documento: manual | interno | correo.
+  origen             String
+  /// Mensaje receptor generado (si ya se respondió).
+  mrRespuesta        String?
+  mrConsecutivo      String?
+  mrXml              String?
+  mrGeneradoAt       DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@unique([tenantId, clave])
+  @@index([tenantId])
+  @@index([receptorCedula])
 }
 
 /// Un comprobante electrónico emitido (factura, tiquete, nota, etc.).
