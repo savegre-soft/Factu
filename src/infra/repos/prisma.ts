@@ -65,9 +65,100 @@ import type {
   LogRepository,
   NuevoLog,
   FiltroLog,
+  NotificationChannelRecord,
+  NotificationChannelRepository,
+  NuevoNotificationChannel,
+  CambiosNotificationChannel,
+  EstadoNotificacion,
+  NotificationMessageRecord,
+  NotificationMessageRepository,
+  NuevoNotificationMessage,
+  CambiosNotificationMessage,
+  FiltroNotificacion,
+  NuevoEmisor,
+  ClienteRecord,
+  ClienteRepository,
+  NuevoCliente,
+  OAuthIdentityRecord,
+  OAuthIdentityRepository,
+  NuevaOAuthIdentity,
+  PasswordResetRecord,
+  PasswordResetRepository,
+  NuevoPasswordReset,
 } from "./types.js";
 
 export const prisma = new PrismaClient();
+
+export class OAuthIdentityRepositoryPrisma implements OAuthIdentityRepository {
+  constructor(private readonly db: PrismaClient) {}
+
+  async crear(input: NuevaOAuthIdentity): Promise<OAuthIdentityRecord> {
+    return this.db.oAuthIdentity.create({ data: input });
+  }
+
+  async buscarPorProviderSub(provider: string, providerSub: string): Promise<OAuthIdentityRecord | null> {
+    return this.db.oAuthIdentity.findUnique({
+      where: { provider_providerSub: { provider, providerSub } },
+    });
+  }
+
+  async listarPorUsuario(userId: string): Promise<OAuthIdentityRecord[]> {
+    return this.db.oAuthIdentity.findMany({ where: { userId }, orderBy: { createdAt: "asc" } });
+  }
+
+  async eliminar(id: string): Promise<void> {
+    await this.db.oAuthIdentity.delete({ where: { id } });
+  }
+}
+
+export class PasswordResetRepositoryPrisma implements PasswordResetRepository {
+  constructor(private readonly db: PrismaClient) {}
+
+  async crear(input: NuevoPasswordReset): Promise<PasswordResetRecord> {
+    return this.db.passwordReset.create({ data: input });
+  }
+
+  async buscarVigentePorUsuario(userId: string): Promise<PasswordResetRecord | null> {
+    return this.db.passwordReset.findFirst({
+      where: { userId, usado: false, expiresAt: { gt: new Date() } },
+      orderBy: { createdAt: "desc" },
+    });
+  }
+
+  async marcarUsado(id: string): Promise<void> {
+    await this.db.passwordReset.update({ where: { id }, data: { usado: true } });
+  }
+
+  async invalidarPorUsuario(userId: string): Promise<void> {
+    await this.db.passwordReset.updateMany({ where: { userId, usado: false }, data: { usado: true } });
+  }
+}
+
+export class ClienteRepositoryPrisma implements ClienteRepository {
+  constructor(private readonly db: PrismaClient) {}
+
+  async upsert(input: NuevoCliente): Promise<ClienteRecord> {
+    const datos = {
+      tipo: input.tipo,
+      nombre: input.nombre,
+      correo: input.correo ?? null,
+      datos: input.datos,
+    };
+    return this.db.cliente.upsert({
+      where: { tenantId_numero: { tenantId: input.tenantId, numero: input.numero } },
+      create: { id: input.id, tenantId: input.tenantId, numero: input.numero, ...datos },
+      update: datos,
+    });
+  }
+
+  async buscarPorNumero(tenantId: string, numero: string): Promise<ClienteRecord | null> {
+    return this.db.cliente.findUnique({ where: { tenantId_numero: { tenantId, numero } } });
+  }
+
+  async listarPorTenant(tenantId: string): Promise<ClienteRecord[]> {
+    return this.db.cliente.findMany({ where: { tenantId }, orderBy: { updatedAt: "desc" } });
+  }
+}
 
 export class TenantRepositoryPrisma implements TenantRepository {
   constructor(private readonly db: PrismaClient) {}
@@ -424,6 +515,104 @@ export class LogRepositoryPrisma implements LogRepository {
   }
 }
 
+export class NotificationChannelRepositoryPrisma implements NotificationChannelRepository {
+  constructor(private readonly db: PrismaClient) {}
+
+  async crear(input: NuevoNotificationChannel): Promise<NotificationChannelRecord> {
+    return this.db.notificationChannel.create({ data: input });
+  }
+
+  async actualizar(id: string, cambios: CambiosNotificationChannel): Promise<NotificationChannelRecord> {
+    return this.db.notificationChannel.update({ where: { id }, data: cambios });
+  }
+
+  async buscarPorId(id: string): Promise<NotificationChannelRecord | null> {
+    return this.db.notificationChannel.findUnique({ where: { id } });
+  }
+
+  async listarPorTenant(tenantId: string): Promise<NotificationChannelRecord[]> {
+    return this.db.notificationChannel.findMany({
+      where: { tenantId },
+      orderBy: { createdAt: "desc" },
+    });
+  }
+
+  async listarActivosPorEvento(tenantId: string, evento: string): Promise<NotificationChannelRecord[]> {
+    return this.db.notificationChannel.findMany({
+      where: { tenantId, activo: true, eventos: { has: evento } },
+    });
+  }
+
+  async eliminar(id: string): Promise<void> {
+    await this.db.notificationChannel.delete({ where: { id } });
+  }
+}
+
+function aNotificationMessageRecord(row: {
+  id: string;
+  tenantId: string;
+  canalId: string;
+  proveedor: string;
+  evento: string;
+  destino: string | null;
+  contenido: string;
+  estado: string;
+  intentos: number;
+  maxIntentos: number;
+  proximoIntentoAt: Date | null;
+  proveedorMensajeId: string | null;
+  respuesta: string | null;
+  error: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}): NotificationMessageRecord {
+  return { ...row, estado: row.estado as EstadoNotificacion };
+}
+
+export class NotificationMessageRepositoryPrisma implements NotificationMessageRepository {
+  constructor(private readonly db: PrismaClient) {}
+
+  async crear(input: NuevoNotificationMessage): Promise<NotificationMessageRecord> {
+    const row = await this.db.notificationMessage.create({ data: input });
+    return aNotificationMessageRecord(row);
+  }
+
+  async actualizar(id: string, cambios: CambiosNotificationMessage): Promise<NotificationMessageRecord> {
+    const row = await this.db.notificationMessage.update({ where: { id }, data: cambios });
+    return aNotificationMessageRecord(row);
+  }
+
+  async buscarPorId(id: string): Promise<NotificationMessageRecord | null> {
+    const row = await this.db.notificationMessage.findUnique({ where: { id } });
+    return row ? aNotificationMessageRecord(row) : null;
+  }
+
+  async listarPorTenant(tenantId: string, filtro?: FiltroNotificacion): Promise<NotificationMessageRecord[]> {
+    const rows = await this.db.notificationMessage.findMany({
+      where: {
+        tenantId,
+        ...(filtro?.estado ? { estado: filtro.estado } : {}),
+        ...(filtro?.canalId ? { canalId: filtro.canalId } : {}),
+      },
+      orderBy: { createdAt: "desc" },
+      take: filtro?.limite ?? 200,
+    });
+    return rows.map(aNotificationMessageRecord);
+  }
+
+  async listarReintentables(limite: number): Promise<NotificationMessageRecord[]> {
+    const rows = await this.db.notificationMessage.findMany({
+      where: {
+        estado: { in: ["pendiente", "reintentando"] },
+        OR: [{ proximoIntentoAt: null }, { proximoIntentoAt: { lte: new Date() } }],
+      },
+      take: limite,
+    });
+    // El tope por intentos depende de cada fila (maxIntentos): se filtra aquí.
+    return rows.map(aNotificationMessageRecord).filter((m) => m.intentos < m.maxIntentos);
+  }
+}
+
 export class MensajeRepositoryPrisma implements MensajeRepository {
   constructor(private readonly db: PrismaClient) {}
 
@@ -621,6 +810,7 @@ type EmisorRow = {
   cedula: string;
   tenantId: string;
   nombre: string;
+  datosFiscales: string | null;
   certP12: string | null;
   certPassword: string | null;
   createdAt: Date;
@@ -635,6 +825,9 @@ function aEmisorRecord(row: EmisorRow): EmisorRecord {
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
+  if (row.datosFiscales) {
+    record.datosFiscales = JSON.parse(row.datosFiscales) as EmisorRecord["datosFiscales"];
+  }
   if (row.certP12 && row.certPassword) {
     record.certificado = {
       p12: JSON.parse(row.certP12) as CertificadoSellado["p12"],
@@ -647,11 +840,18 @@ function aEmisorRecord(row: EmisorRow): EmisorRecord {
 export class EmisorRepositoryPrisma implements EmisorRepository {
   constructor(private readonly db: PrismaClient) {}
 
-  async upsert(input: { cedula: string; tenantId: string; nombre: string }): Promise<EmisorRecord> {
+  async upsert(input: NuevoEmisor): Promise<EmisorRecord> {
+    const datosFiscales = input.datosFiscales ? JSON.stringify(input.datosFiscales) : undefined;
     const row = await this.db.emisor.upsert({
       where: { cedula: input.cedula },
-      create: { cedula: input.cedula, tenantId: input.tenantId, nombre: input.nombre },
-      update: { nombre: input.nombre },
+      create: {
+        cedula: input.cedula,
+        tenantId: input.tenantId,
+        nombre: input.nombre,
+        datosFiscales,
+      },
+      // Solo pisa los datos fiscales si vienen en la petición.
+      update: { nombre: input.nombre, ...(datosFiscales ? { datosFiscales } : {}) },
     });
     return aEmisorRecord(row);
   }

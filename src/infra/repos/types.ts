@@ -352,6 +352,110 @@ export interface LogRepository {
   listarPorTenant(tenantId: string, filtro?: FiltroLog): Promise<LogRecord[]>;
 }
 
+// ---- Notificaciones (canales de comunicación) ----
+
+export interface NotificationChannelRecord {
+  id: string;
+  tenantId: string;
+  tipo: string;
+  proveedor: string;
+  nombre: string;
+  configSellado: string;
+  eventos: string[];
+  activo: boolean;
+  lastStatus: string | null;
+  lastError: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface NuevoNotificationChannel {
+  id: string;
+  tenantId: string;
+  tipo: string;
+  proveedor: string;
+  nombre: string;
+  configSellado: string;
+  eventos: string[];
+  activo: boolean;
+}
+
+export interface CambiosNotificationChannel {
+  nombre?: string;
+  configSellado?: string;
+  eventos?: string[];
+  activo?: boolean;
+  lastStatus?: string | null;
+  lastError?: string | null;
+}
+
+export interface NotificationChannelRepository {
+  crear(input: NuevoNotificationChannel): Promise<NotificationChannelRecord>;
+  actualizar(id: string, cambios: CambiosNotificationChannel): Promise<NotificationChannelRecord>;
+  buscarPorId(id: string): Promise<NotificationChannelRecord | null>;
+  listarPorTenant(tenantId: string): Promise<NotificationChannelRecord[]>;
+  listarActivosPorEvento(tenantId: string, evento: string): Promise<NotificationChannelRecord[]>;
+  eliminar(id: string): Promise<void>;
+}
+
+export type EstadoNotificacion = "pendiente" | "enviado" | "fallido" | "reintentando";
+
+export interface NotificationMessageRecord {
+  id: string;
+  tenantId: string;
+  canalId: string;
+  proveedor: string;
+  evento: string;
+  destino: string | null;
+  contenido: string;
+  estado: EstadoNotificacion;
+  intentos: number;
+  maxIntentos: number;
+  proximoIntentoAt: Date | null;
+  proveedorMensajeId: string | null;
+  respuesta: string | null;
+  error: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface NuevoNotificationMessage {
+  id: string;
+  tenantId: string;
+  canalId: string;
+  proveedor: string;
+  evento: string;
+  destino?: string | null;
+  contenido: string;
+  estado: EstadoNotificacion;
+  maxIntentos: number;
+}
+
+export interface CambiosNotificationMessage {
+  estado?: EstadoNotificacion;
+  intentos?: number;
+  proximoIntentoAt?: Date | null;
+  proveedorMensajeId?: string | null;
+  respuesta?: string | null;
+  error?: string | null;
+  destino?: string | null;
+}
+
+export interface FiltroNotificacion {
+  estado?: EstadoNotificacion;
+  canalId?: string;
+  limite?: number;
+}
+
+export interface NotificationMessageRepository {
+  crear(input: NuevoNotificationMessage): Promise<NotificationMessageRecord>;
+  actualizar(id: string, cambios: CambiosNotificationMessage): Promise<NotificationMessageRecord>;
+  buscarPorId(id: string): Promise<NotificationMessageRecord | null>;
+  listarPorTenant(tenantId: string, filtro?: FiltroNotificacion): Promise<NotificationMessageRecord[]>;
+  /** Mensajes vencidos para reintentar (pendiente/reintentando, proximoIntentoAt <= ahora). */
+  listarReintentables(limite: number): Promise<NotificationMessageRecord[]>;
+}
+
 // ---- Chat entre usuarios del tenant ----
 
 export interface MensajeRecord {
@@ -384,22 +488,126 @@ export interface MensajeRepository {
 
 // ---- Emisores ----
 
+/** Datos fiscales de un emisor (los que exige Hacienda al emitir). */
+export interface DatosFiscalesEmisor {
+  tipoIdentificacion?: string;
+  nombreComercial?: string;
+  correoElectronico?: string;
+  telefono?: { codigoPais: string; numTelefono: string };
+  ubicacion?: { provincia: string; canton: string; distrito: string; otrasSenas?: string };
+  codigoActividad?: string;
+}
+
 export interface EmisorRecord {
   cedula: string;
   /** Tenant dueño del emisor (aislamiento multi-tenant). */
   tenantId: string;
   nombre: string;
+  /** Datos fiscales guardados (tipo id, actividad, ubicación, etc.). */
+  datosFiscales?: DatosFiscalesEmisor;
   /** Certificado .p12 cifrado en reposo (si ya se cargó). */
   certificado?: CertificadoSellado;
   createdAt: Date;
   updatedAt: Date;
 }
 
+export interface NuevoEmisor {
+  cedula: string;
+  tenantId: string;
+  nombre: string;
+  datosFiscales?: DatosFiscalesEmisor;
+}
+
 export interface EmisorRepository {
-  upsert(input: { cedula: string; tenantId: string; nombre: string }): Promise<EmisorRecord>;
+  upsert(input: NuevoEmisor): Promise<EmisorRecord>;
   buscar(cedula: string): Promise<EmisorRecord | null>;
   listarPorTenant(tenantId: string): Promise<EmisorRecord[]>;
   guardarCertificado(cedula: string, cert: CertificadoSellado): Promise<void>;
+}
+
+// ---- Clientes (receptores de facturas pasadas) ----
+
+export interface ClienteRecord {
+  id: string;
+  tenantId: string;
+  numero: string;
+  tipo: string;
+  nombre: string;
+  correo: string | null;
+  /** JSON del receptor completo (DatosReceptor) para autocompletar. */
+  datos: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface NuevoCliente {
+  id: string;
+  tenantId: string;
+  numero: string;
+  tipo: string;
+  nombre: string;
+  correo?: string | null;
+  datos: string;
+}
+
+export interface ClienteRepository {
+  /** Inserta o actualiza el cliente (clave: tenant + número). */
+  upsert(input: NuevoCliente): Promise<ClienteRecord>;
+  buscarPorNumero(tenantId: string, numero: string): Promise<ClienteRecord | null>;
+  listarPorTenant(tenantId: string): Promise<ClienteRecord[]>;
+}
+
+// ---- Identidades OAuth (Google / Microsoft) ----
+
+export interface OAuthIdentityRecord {
+  id: string;
+  userId: string;
+  provider: string;
+  providerSub: string;
+  email: string;
+  createdAt: Date;
+}
+
+export interface NuevaOAuthIdentity {
+  id: string;
+  userId: string;
+  provider: string;
+  providerSub: string;
+  email: string;
+}
+
+export interface OAuthIdentityRepository {
+  crear(input: NuevaOAuthIdentity): Promise<OAuthIdentityRecord>;
+  buscarPorProviderSub(provider: string, providerSub: string): Promise<OAuthIdentityRecord | null>;
+  listarPorUsuario(userId: string): Promise<OAuthIdentityRecord[]>;
+  eliminar(id: string): Promise<void>;
+}
+
+// ---- Reseteo de contraseña ----
+
+export interface PasswordResetRecord {
+  id: string;
+  userId: string;
+  codigoHash: string;
+  expiresAt: Date;
+  usado: boolean;
+  createdAt: Date;
+}
+
+export interface NuevoPasswordReset {
+  id: string;
+  userId: string;
+  codigoHash: string;
+  expiresAt: Date;
+}
+
+export interface PasswordResetRepository {
+  crear(input: NuevoPasswordReset): Promise<PasswordResetRecord>;
+  /** El reseteo vigente más reciente del usuario (no usado y no vencido). */
+  buscarVigentePorUsuario(userId: string): Promise<PasswordResetRecord | null>;
+  marcarUsado(id: string): Promise<void>;
+  /** Invalida los reseteos previos del usuario (al pedir uno nuevo). */
+  invalidarPorUsuario(userId: string): Promise<void>;
 }
 
 export interface ComprobanteRecord {

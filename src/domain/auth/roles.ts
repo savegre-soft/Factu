@@ -21,6 +21,8 @@ export enum Permiso {
   GestionarEmisores = "gestionar_emisores",
   /** Gestionar API keys / integraciones de aplicaciones externas. */
   GestionarIntegraciones = "gestionar_integraciones",
+  /** Gestionar canales de notificación (SMS, WhatsApp, Slack, Teams). */
+  GestionarNotificaciones = "gestionar_notificaciones",
   /** Emitir comprobantes / iniciar sesión de Hacienda. */
   Emitir = "emitir",
   /** Consultar comprobantes y datos. */
@@ -32,6 +34,7 @@ const PERMISOS_POR_ROL: Record<Rol, Permiso[]> = {
     Permiso.GestionarUsuarios,
     Permiso.GestionarEmisores,
     Permiso.GestionarIntegraciones,
+    Permiso.GestionarNotificaciones,
     Permiso.Emitir,
     Permiso.Leer,
   ],

@@ -131,6 +131,9 @@ model Emisor {
   tenantId  String
   tenant    Tenant   @relation(fields: [tenantId], references: [id])
   nombre    String
+  /// Datos fiscales del emisor (JSON): tipo id, actividad, nombre comercial,
+  /// correo, teléfono y ubicación. Se usan al emitir sin reingresarlos.
+  datosFiscales String?
   /// Certificado .p12 cifrado (JSON de SecretoSellado). NUNCA en texto plano.
   certP12       String?
   /// Clave del .p12, cifrada (JSON de SecretoSellado).
@@ -140,6 +143,56 @@ model Emisor {
 
   comprobantes Comprobante[]
 
+  @@index([tenantId])
+}
+
+/// Identidad OAuth vinculada a un usuario (Google / Microsoft). Un usuario puede
+/// tener varias (una por proveedor). Permite iniciar sesión con ese proveedor.
+model OAuthIdentity {
+  id          String   @id
+  userId      String
+  /// google | microsoft
+  provider    String
+  /// Identificador estable del usuario en el proveedor (claim "sub").
+  providerSub String
+  email       String
+  createdAt   DateTime @default(now())
+
+  @@unique([provider, providerSub])
+  @@index([userId])
+}
+
+/// Código de un solo uso para restablecer la contraseña. Se envía por el SMTP de
+/// la plataforma y vence pronto.
+model PasswordReset {
+  id         String   @id
+  userId     String
+  /// Hash del código (nunca en claro).
+  codigoHash String
+  expiresAt  DateTime
+  usado      Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+}
+
+/// Un cliente (receptor) usado en facturas pasadas. Permite autocompletar el
+/// receptor por su número de identificación al emitir. Uno por tenant + número.
+model Cliente {
+  id             String   @id
+  tenantId       String
+  /// Número de identificación (cédula) del receptor.
+  numero         String
+  /// Tipo de identificación (01 física, 02 jurídica, …).
+  tipo           String
+  nombre         String
+  correo         String?
+  /// Payload completo del receptor (JSON de DatosReceptor) para autocompletar.
+  datos          String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([tenantId, numero])
   @@index([tenantId])
 }
 
@@ -318,4 +371,58 @@ model RegistroLog {
 
   @@index([tenantId, createdAt])
   @@index([nivel])
+}
+
+/// Canal de comunicación configurado por una organización (Notificaciones).
+/// Un canal = un proveedor concreto (Twilio, WhatsApp Cloud, Slack, Teams) con
+/// su configuración cifrada, suscrito a uno o varios eventos.
+model NotificationChannel {
+  id            String   @id
+  tenantId      String
+  /// Tipo de canal: sms | whatsapp | slack | teams.
+  tipo          String
+  /// Proveedor concreto: twilio | whatsapp_cloud | slack | teams.
+  proveedor     String
+  nombre        String
+  /// Configuración cifrada (JSON de SecretoSellado): credenciales + destino.
+  configSellado String
+  /// Eventos suscritos, ej. ["comprobante.aceptado","entrega.cliente"].
+  eventos       String[]
+  activo        Boolean  @default(true)
+  /// Resultado del último envío por este canal: enviado | fallido.
+  lastStatus    String?
+  lastError     String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([tenantId])
+}
+
+/// Una notificación encolada/enviada por un canal (historial + reintentos).
+model NotificationMessage {
+  id                 String    @id
+  tenantId           String
+  canalId            String
+  proveedor          String
+  evento             String
+  /// Destino visible (teléfono, "Slack", "Teams").
+  destino            String?
+  /// Texto renderizado que se envió.
+  contenido          String
+  /// pendiente | enviado | fallido | reintentando
+  estado             String
+  intentos           Int       @default(0)
+  maxIntentos        Int
+  /// Momento del próximo reintento (backoff). Null si no aplica.
+  proximoIntentoAt   DateTime?
+  /// Id del mensaje en el proveedor (ej. Twilio SID, WhatsApp message id).
+  proveedorMensajeId String?
+  /// Respuesta cruda del proveedor (JSON serializado).
+  respuesta          String?
+  error              String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@index([tenantId, canalId])
+  @@index([estado, proximoIntentoAt])
 }

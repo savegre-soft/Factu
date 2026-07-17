@@ -1,18 +1,39 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { emisorRepository } from "../infra/repos/index.js";
+import { emisorRepository, clienteRepository } from "../infra/repos/index.js";
 import { certStore } from "../services/emisor/index.js";
 import {
   emisorRegistrarSchema,
   emisorCertificadoSchema,
   emisorListarSchema,
+  clientesListarSchema,
+  clienteBuscarSchema,
 } from "../plugins/schemas.js";
 import { Permiso } from "../domain/auth/roles.js";
 import { emisorDelTenant } from "./_guards.js";
 
+const datosFiscalesSchema = z
+  .object({
+    tipoIdentificacion: z.string().optional(),
+    nombreComercial: z.string().optional(),
+    correoElectronico: z.string().email().optional(),
+    telefono: z.object({ codigoPais: z.string(), numTelefono: z.string() }).optional(),
+    ubicacion: z
+      .object({
+        provincia: z.string(),
+        canton: z.string(),
+        distrito: z.string(),
+        otrasSenas: z.string().optional(),
+      })
+      .optional(),
+    codigoActividad: z.string().optional(),
+  })
+  .optional();
+
 const registrarSchema = z.object({
   cedula: z.string().regex(/^\d+$/),
   nombre: z.string().min(1),
+  datosFiscales: datosFiscalesSchema,
 });
 
 const certificadoSchema = z.object({
@@ -32,6 +53,7 @@ export async function emisorRoutes(app: FastifyInstance): Promise<void> {
       return emisores.map((e) => ({
         cedula: e.cedula,
         nombre: e.nombre,
+        datosFiscales: e.datosFiscales ?? null,
         tieneCertificado: Boolean(e.certificado),
       }));
     },
@@ -60,6 +82,7 @@ export async function emisorRoutes(app: FastifyInstance): Promise<void> {
       return {
         cedula: emisor.cedula,
         nombre: emisor.nombre,
+        datosFiscales: emisor.datosFiscales ?? null,
         tieneCertificado: Boolean(emisor.certificado),
       };
     },
@@ -88,6 +111,33 @@ export async function emisorRoutes(app: FastifyInstance): Promise<void> {
           detalle: (err as Error).message,
         });
       }
+    },
+  );
+
+  /** Clientes (receptores) usados en facturas pasadas del tenant. */
+  app.get(
+    "/clientes",
+    { schema: clientesListarSchema, preHandler: app.requierePermiso(Permiso.Leer) },
+    async (request) => {
+      const clientes = await clienteRepository.listarPorTenant(request.user.tenantId);
+      return clientes.map((c) => ({
+        numero: c.numero,
+        tipo: c.tipo,
+        nombre: c.nombre,
+        correo: c.correo,
+      }));
+    },
+  );
+
+  /** Autocompletar: devuelve el receptor completo guardado para ese número. */
+  app.get(
+    "/clientes/:numero",
+    { schema: clienteBuscarSchema, preHandler: app.requierePermiso(Permiso.Leer) },
+    async (request, reply) => {
+      const numero = (request.params as { numero: string }).numero;
+      const cliente = await clienteRepository.buscarPorNumero(request.user.tenantId, numero);
+      if (!cliente) return reply.status(404).send({ error: "Sin cliente previo con ese número" });
+      return { numero: cliente.numero, receptor: JSON.parse(cliente.datos) };
     },
   );
 }

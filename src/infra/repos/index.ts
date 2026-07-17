@@ -17,6 +17,11 @@ import {
   WebhookEntregaRepositoryMemoria,
   AuditoriaRepositoryMemoria,
   LogRepositoryMemoria,
+  NotificationChannelRepositoryMemoria,
+  NotificationMessageRepositoryMemoria,
+  ClienteRepositoryMemoria,
+  OAuthIdentityRepositoryMemoria,
+  PasswordResetRepositoryMemoria,
   TenantRepositoryMemoria,
   UsuarioRepositoryMemoria,
 } from "./memory.js";
@@ -34,6 +39,11 @@ import type {
   WebhookEntregaRepository,
   AuditoriaRepository,
   LogRepository,
+  NotificationChannelRepository,
+  NotificationMessageRepository,
+  ClienteRepository,
+  OAuthIdentityRepository,
+  PasswordResetRepository,
   TenantRepository,
   UsuarioRepository,
 } from "./types.js";
@@ -53,6 +63,11 @@ let webhookRepo: WebhookRepository;
 let webhookEntregaRepo: WebhookEntregaRepository;
 let auditoriaRepo: AuditoriaRepository;
 let logRepo: LogRepository;
+let notificationChannelRepo: NotificationChannelRepository;
+let notificationMessageRepo: NotificationMessageRepository;
+let clienteRepo: ClienteRepository;
+let oauthIdentityRepo: OAuthIdentityRepository;
+let passwordResetRepo: PasswordResetRepository;
 
 if (env.PERSISTENCIA === "prisma") {
   // Import perezoso para no exigir el cliente de Prisma cuando se usa memoria.
@@ -70,6 +85,11 @@ if (env.PERSISTENCIA === "prisma") {
     WebhookEntregaRepositoryPrisma,
     AuditoriaRepositoryPrisma,
     LogRepositoryPrisma,
+    NotificationChannelRepositoryPrisma,
+    NotificationMessageRepositoryPrisma,
+    ClienteRepositoryPrisma,
+    OAuthIdentityRepositoryPrisma,
+    PasswordResetRepositoryPrisma,
     TenantRepositoryPrisma,
     UsuarioRepositoryPrisma,
     prisma,
@@ -89,6 +109,11 @@ if (env.PERSISTENCIA === "prisma") {
   webhookEntregaRepo = new WebhookEntregaRepositoryPrisma(prisma);
   auditoriaRepo = new AuditoriaRepositoryPrisma(prisma);
   logRepo = new LogRepositoryPrisma(prisma);
+  notificationChannelRepo = new NotificationChannelRepositoryPrisma(prisma);
+  notificationMessageRepo = new NotificationMessageRepositoryPrisma(prisma);
+  clienteRepo = new ClienteRepositoryPrisma(prisma);
+  oauthIdentityRepo = new OAuthIdentityRepositoryPrisma(prisma);
+  passwordResetRepo = new PasswordResetRepositoryPrisma(prisma);
 } else {
   emisorRepo = new EmisorRepositoryMemoria();
   comprobanteRepo = new ComprobanteRepositoryMemoria();
@@ -105,6 +130,11 @@ if (env.PERSISTENCIA === "prisma") {
   webhookEntregaRepo = new WebhookEntregaRepositoryMemoria();
   auditoriaRepo = new AuditoriaRepositoryMemoria();
   logRepo = new LogRepositoryMemoria();
+  notificationChannelRepo = new NotificationChannelRepositoryMemoria();
+  notificationMessageRepo = new NotificationMessageRepositoryMemoria();
+  clienteRepo = new ClienteRepositoryMemoria();
+  oauthIdentityRepo = new OAuthIdentityRepositoryMemoria();
+  passwordResetRepo = new PasswordResetRepositoryMemoria();
 }
 
 export const emisorRepository = emisorRepo;
@@ -122,6 +152,11 @@ export const webhookRepository = webhookRepo;
 export const webhookEntregaRepository = webhookEntregaRepo;
 export const auditoriaRepository = auditoriaRepo;
 export const logRepository = logRepo;
+export const notificationChannelRepository = notificationChannelRepo;
+export const notificationMessageRepository = notificationMessageRepo;
+export const clienteRepository = clienteRepo;
+export const oauthIdentityRepository = oauthIdentityRepo;
+export const passwordResetRepository = passwordResetRepo;
 
 /** Llave maestra efectiva (con aviso si no se configuró en desarrollo). */
 export function masterKey(): string {

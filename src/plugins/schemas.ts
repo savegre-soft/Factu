@@ -153,6 +153,69 @@ export const claveSchema = {
 
 const bearer = [{ bearerAuth: [] }];
 
+// --- OAuth y reseteo de contraseña ---
+
+export const oauthProveedoresSchema = {
+  tags: ["Autenticación"],
+  summary: "Proveedores OAuth configurados (Google / Microsoft)",
+} as const;
+
+export const oauthUrlSchema = {
+  tags: ["Autenticación"],
+  summary: "URL de consentimiento OAuth para iniciar sesión / registrarse",
+  params: { type: "object", properties: { provider: { type: "string" } }, required: ["provider"] },
+} as const;
+
+export const oauthVincularUrlSchema = {
+  tags: ["Autenticación"],
+  summary: "URL de consentimiento OAuth para vincular la cuenta (autenticado)",
+  security: bearer,
+  params: { type: "object", properties: { provider: { type: "string" } }, required: ["provider"] },
+} as const;
+
+export const oauthCallbackSchema = {
+  tags: ["Autenticación"],
+  summary: "Callback de OAuth: canjea el code y redirige al frontend",
+  params: { type: "object", properties: { provider: { type: "string" } }, required: ["provider"] },
+} as const;
+
+export const identidadesListarSchema = {
+  tags: ["Autenticación"],
+  summary: "Cuentas OAuth vinculadas del usuario actual",
+  security: bearer,
+} as const;
+
+export const identidadDesvincularSchema = {
+  tags: ["Autenticación"],
+  summary: "Desvincula una cuenta OAuth del usuario actual",
+  security: bearer,
+  params: { type: "object", properties: { provider: { type: "string" } }, required: ["provider"] },
+} as const;
+
+export const passwordOlvideSchema = {
+  tags: ["Autenticación"],
+  summary: "Solicita un código para restablecer la contraseña",
+  body: {
+    type: "object",
+    properties: { email: { type: "string" } },
+    required: ["email"],
+  },
+} as const;
+
+export const passwordResetSchema = {
+  tags: ["Autenticación"],
+  summary: "Restablece la contraseña con el código recibido",
+  body: {
+    type: "object",
+    properties: {
+      email: { type: "string" },
+      codigo: { type: "string" },
+      password: { type: "string" },
+    },
+    required: ["email", "codigo", "password"],
+  },
+} as const;
+
 // --- Autenticación de usuarios ---
 
 export const authRegistroSchema = {
@@ -378,9 +441,48 @@ export const emisorRegistrarSchema = {
   security: bearer,
   body: {
     type: "object",
-    properties: { cedula: { type: "string" }, nombre: { type: "string" } },
+    properties: {
+      cedula: { type: "string" },
+      nombre: { type: "string" },
+      datosFiscales: {
+        type: "object",
+        description: "Datos fiscales para emitir sin reingresarlos",
+        properties: {
+          tipoIdentificacion: { type: "string" },
+          nombreComercial: { type: "string" },
+          correoElectronico: { type: "string" },
+          telefono: {
+            type: "object",
+            properties: { codigoPais: { type: "string" }, numTelefono: { type: "string" } },
+          },
+          ubicacion: {
+            type: "object",
+            properties: {
+              provincia: { type: "string" },
+              canton: { type: "string" },
+              distrito: { type: "string" },
+              otrasSenas: { type: "string" },
+            },
+          },
+          codigoActividad: { type: "string" },
+        },
+      },
+    },
     required: ["cedula", "nombre"],
   },
+} as const;
+
+export const clientesListarSchema = {
+  tags: ["Emisores"],
+  summary: "Lista los clientes (receptores) usados en facturas pasadas",
+  security: bearer,
+} as const;
+
+export const clienteBuscarSchema = {
+  tags: ["Emisores"],
+  summary: "Busca un cliente por su número de identificación (autocompletar)",
+  security: bearer,
+  params: { type: "object", properties: { numero: { type: "string" } }, required: ["numero"] },
 } as const;
 
 export const emisorCertificadoSchema = {
@@ -842,6 +944,99 @@ export const logsListarSchema = {
       nivel: { type: "string", enum: ["info", "warn", "error"], description: "Filtra por nivel" },
       origen: { type: "string", description: "Filtra por origen, ej. \"webhooks\"" },
       limite: { type: "integer", minimum: 1, maximum: 500, description: "Máximo de registros (por defecto 200)" },
+    },
+  },
+} as const;
+
+const canalBody = {
+  type: "object",
+  properties: {
+    tipo: {
+      type: "string",
+      enum: ["sms", "whatsapp", "slack", "teams", "bitrix24"],
+      description: "Tipo de canal",
+    },
+    proveedor: {
+      type: "string",
+      enum: ["twilio", "whatsapp_cloud", "slack", "teams", "bitrix24"],
+      description: "Proveedor concreto",
+    },
+    nombre: { type: "string", description: "Nombre del canal, ej. \"Alertas del equipo\"" },
+    config: {
+      type: "object",
+      additionalProperties: true,
+      description: "Credenciales + destino del proveedor. Al editar, omitir para conservar",
+    },
+    eventos: {
+      type: "array",
+      items: {
+        type: "string",
+        enum: ["comprobante.aceptado", "comprobante.rechazado", "documento.recibido", "entrega.cliente"],
+      },
+      description: "Eventos a los que reacciona el canal",
+    },
+    activo: { type: "boolean" },
+  },
+  required: ["tipo", "proveedor", "nombre", "eventos"],
+} as const;
+
+export const canalNotifListarSchema = {
+  tags: ["Notificaciones"],
+  summary: "Lista los canales de notificación de tu organización (solo admin)",
+  security: bearer,
+} as const;
+
+export const canalNotifCrearSchema = {
+  tags: ["Notificaciones"],
+  summary: "Crea un canal de notificación (solo admin)",
+  security: bearer,
+  body: canalBody,
+} as const;
+
+export const canalNotifActualizarSchema = {
+  tags: ["Notificaciones"],
+  summary: "Actualiza un canal de notificación (solo admin)",
+  security: bearer,
+  params: { type: "object", properties: { id: { type: "string" } }, required: ["id"] },
+  body: canalBody,
+} as const;
+
+export const canalNotifEliminarSchema = {
+  tags: ["Notificaciones"],
+  summary: "Elimina un canal de notificación (solo admin)",
+  security: bearer,
+  params: { type: "object", properties: { id: { type: "string" } }, required: ["id"] },
+} as const;
+
+export const canalNotifProbarSchema = {
+  tags: ["Notificaciones"],
+  summary: "Envía una notificación de prueba por el canal (solo admin)",
+  security: bearer,
+  params: { type: "object", properties: { id: { type: "string" } }, required: ["id"] },
+} as const;
+
+export const notifProveedoresSchema = {
+  tags: ["Notificaciones"],
+  summary: "Catálogo de proveedores disponibles y sus campos de configuración",
+  security: bearer,
+} as const;
+
+export const notifEventosSchema = {
+  tags: ["Notificaciones"],
+  summary: "Catálogo de eventos que pueden disparar notificaciones",
+  security: bearer,
+} as const;
+
+export const notifHistorialSchema = {
+  tags: ["Notificaciones"],
+  summary: "Historial de notificaciones enviadas (solo admin)",
+  security: bearer,
+  querystring: {
+    type: "object",
+    properties: {
+      estado: { type: "string", enum: ["pendiente", "enviado", "fallido", "reintentando"] },
+      canalId: { type: "string" },
+      limite: { type: "integer", minimum: 1, maximum: 500 },
     },
   },
 } as const;

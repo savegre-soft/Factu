@@ -58,6 +58,44 @@ const schema = z.object({
     .transform((v) => v === "true"),
   WEBHOOK_MAX_INTENTOS: z.coerce.number().int().min(1).default(5),
   WEBHOOK_POLL_MINUTOS: z.coerce.number().int().min(1).default(5),
+
+  // --- Notificaciones (canales de comunicación: SMS, WhatsApp, Slack, Teams) ---
+  NOTIF_ENABLED: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((v) => v === "true"),
+  NOTIF_MAX_INTENTOS: z.coerce.number().int().min(1).default(5),
+  NOTIF_POLL_MINUTOS: z.coerce.number().int().min(1).default(2),
+
+  // --- URLs públicas (para OAuth y enlaces por correo) ---
+  /** Base del frontend, ej. https://app.miplataforma.cr (a donde vuelve el OAuth). */
+  APP_URL: z.string().url().default("http://localhost:5173"),
+  /** Base pública de esta API, ej. https://api.miplataforma.cr (redirect_uri del OAuth). */
+  API_PUBLIC_URL: z.string().url().default("http://localhost:3000"),
+
+  // --- OAuth: iniciar sesión / registrarse con Google o Microsoft ---
+  GOOGLE_OAUTH_CLIENT_ID: z.string().optional(),
+  GOOGLE_OAUTH_CLIENT_SECRET: z.string().optional(),
+  MICROSOFT_OAUTH_CLIENT_ID: z.string().optional(),
+  MICROSOFT_OAUTH_CLIENT_SECRET: z.string().optional(),
+  /** Tenant de Azure AD: "common" (cualquiera), "organizations", o un GUID. */
+  MICROSOFT_OAUTH_TENANT: z.string().default("common"),
+
+  // --- SMTP PROPIO DE LA PLATAFORMA (correos de la cuenta: código de reseteo) ---
+  // OJO: distinto de SMTP_* (que la API usa para entregar comprobantes a los
+  // clientes del tenant). Este es el remitente de la plataforma para su gente.
+  PLATAFORMA_SMTP_HOST: z.string().optional(),
+  PLATAFORMA_SMTP_PORT: z.coerce.number().int().default(587),
+  PLATAFORMA_SMTP_SECURE: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((v) => v === "true"),
+  PLATAFORMA_SMTP_USER: z.string().optional(),
+  PLATAFORMA_SMTP_PASS: z.string().optional(),
+  /** Remitente, ej. `Factu <no-reply@miplataforma.cr>`. */
+  PLATAFORMA_SMTP_FROM: z.string().optional(),
+  /** Minutos de vigencia del código de reseteo de contraseña. */
+  PASSWORD_RESET_TTL_MINUTOS: z.coerce.number().int().min(1).default(15),
 });
 
 export const env = schema.parse(process.env);

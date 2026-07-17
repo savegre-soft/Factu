@@ -5,10 +5,12 @@ import { receptionClient, emitirComprobante } from "../services/hacienda/index.j
 import { firmar } from "../services/firma/index.js";
 import { generarP12Autofirmado, type Certificado } from "../services/firma/certificado.js";
 import { certStore } from "../services/emisor/index.js";
-import { comprobanteRepository, emisorRepository } from "../infra/repos/index.js";
+import { comprobanteRepository, emisorRepository, clienteRepository } from "../infra/repos/index.js";
+import { randomUUID } from "node:crypto";
 import { documentosRecibidosService } from "../services/documentosRecibidos/index.js";
 import { entregaService } from "../services/entrega/index.js";
 import { emitirEvento } from "../services/webhooks/index.js";
+import { notificarEvento } from "../services/notificaciones/index.js";
 import { registrarAuditoria, actorDesde } from "../services/auditoria/index.js";
 import { TipoDocumento } from "../domain/factura/facturaXml.js";
 import { validarComprobante } from "../domain/validacion/validacion.js";
@@ -105,6 +107,21 @@ export async function comprobanteRoutes(app: FastifyInstance): Promise<void> {
         respuestaXml: result.estado.respuestaXml,
       });
 
+      // Guarda/actualiza el receptor como cliente para autocompletarlo luego.
+      if (datos.receptor?.identificacion?.numero) {
+        void clienteRepository
+          .upsert({
+            id: randomUUID(),
+            tenantId: request.user.tenantId,
+            numero: datos.receptor.identificacion.numero,
+            tipo: datos.receptor.identificacion.tipo,
+            nombre: datos.receptor.nombre,
+            correo: datos.receptor.correoElectronico ?? null,
+            datos: JSON.stringify(datos.receptor),
+          })
+          .catch((err) => request.log.warn({ err }, "No se pudo guardar el cliente receptor"));
+      }
+
       registrarAuditoria({
         tenantId: request.user.tenantId,
         actor: actorDesde(request.user, request.ip),
@@ -114,15 +131,18 @@ export async function comprobanteRoutes(app: FastifyInstance): Promise<void> {
         detalle: `${tipoParam} ${result.consecutivo} → ${result.estado.estado}`,
       });
 
-      // Webhook a sistemas externos según el veredicto de Hacienda.
+      // Webhook + notificaciones según el veredicto de Hacienda.
       if (result.estado.estado === "aceptado" || result.estado.estado === "rechazado") {
-        emitirEvento(request.user.tenantId, `comprobante.${result.estado.estado}`, {
+        const evento = `comprobante.${result.estado.estado}`;
+        const datosEvento = {
           clave: result.clave,
           tipo: tipoParam,
           consecutivo: result.consecutivo,
           estado: result.estado.estado,
           cedulaEmisor: datos.cedulaEmisor,
-        });
+        };
+        emitirEvento(request.user.tenantId, evento, datosEvento);
+        notificarEvento(request.user.tenantId, evento, datosEvento);
       }
 
       // Routing interno: si el receptor es un emisor registrado en Factu, el

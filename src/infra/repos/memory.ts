@@ -40,6 +40,16 @@ import type {
   DocumentoRecibidoRepository,
   EmisorRecord,
   EmisorRepository,
+  NuevoEmisor,
+  ClienteRecord,
+  ClienteRepository,
+  NuevoCliente,
+  OAuthIdentityRecord,
+  OAuthIdentityRepository,
+  NuevaOAuthIdentity,
+  PasswordResetRecord,
+  PasswordResetRepository,
+  NuevoPasswordReset,
   MensajeReceptorGuardado,
   NuevaApiKey,
   NuevoComprobante,
@@ -56,6 +66,15 @@ import type {
   LogRepository,
   NuevoLog,
   FiltroLog,
+  NotificationChannelRecord,
+  NotificationChannelRepository,
+  NuevoNotificationChannel,
+  CambiosNotificationChannel,
+  NotificationMessageRecord,
+  NotificationMessageRepository,
+  NuevoNotificationMessage,
+  CambiosNotificationMessage,
+  FiltroNotificacion,
 } from "./types.js";
 
 export class TenantRepositoryMemoria implements TenantRepository {
@@ -152,15 +171,21 @@ export class ApiKeyRepositoryMemoria implements ApiKeyRepository {
 export class EmisorRepositoryMemoria implements EmisorRepository {
   private readonly emisores = new Map<string, EmisorRecord>();
 
-  async upsert(input: { cedula: string; tenantId: string; nombre: string }): Promise<EmisorRecord> {
+  async upsert(input: NuevoEmisor): Promise<EmisorRecord> {
     const ahora = new Date();
     const existente = this.emisores.get(input.cedula);
     const record: EmisorRecord = existente
-      ? { ...existente, nombre: input.nombre, updatedAt: ahora }
+      ? {
+          ...existente,
+          nombre: input.nombre,
+          datosFiscales: input.datosFiscales ?? existente.datosFiscales,
+          updatedAt: ahora,
+        }
       : {
           cedula: input.cedula,
           tenantId: input.tenantId,
           nombre: input.nombre,
+          datosFiscales: input.datosFiscales,
           createdAt: ahora,
           updatedAt: ahora,
         };
@@ -317,6 +342,193 @@ export class LogRepositoryMemoria implements LogRepository {
       )
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
       .slice(0, filtro?.limite ?? 200);
+  }
+}
+
+export class ClienteRepositoryMemoria implements ClienteRepository {
+  private readonly clientes = new Map<string, ClienteRecord>();
+
+  private clave(tenantId: string, numero: string) {
+    return `${tenantId}:${numero}`;
+  }
+
+  async upsert(input: NuevoCliente): Promise<ClienteRecord> {
+    const ahora = new Date();
+    const k = this.clave(input.tenantId, input.numero);
+    const existente = this.clientes.get(k);
+    const record: ClienteRecord = existente
+      ? { ...existente, ...input, correo: input.correo ?? null, updatedAt: ahora }
+      : { ...input, correo: input.correo ?? null, createdAt: ahora, updatedAt: ahora };
+    this.clientes.set(k, record);
+    return record;
+  }
+
+  async buscarPorNumero(tenantId: string, numero: string): Promise<ClienteRecord | null> {
+    return this.clientes.get(this.clave(tenantId, numero)) ?? null;
+  }
+
+  async listarPorTenant(tenantId: string): Promise<ClienteRecord[]> {
+    return [...this.clientes.values()]
+      .filter((c) => c.tenantId === tenantId)
+      .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+  }
+}
+
+export class OAuthIdentityRepositoryMemoria implements OAuthIdentityRepository {
+  private readonly identidades = new Map<string, OAuthIdentityRecord>();
+
+  async crear(input: NuevaOAuthIdentity): Promise<OAuthIdentityRecord> {
+    const record: OAuthIdentityRecord = { ...input, createdAt: new Date() };
+    this.identidades.set(input.id, record);
+    return record;
+  }
+
+  async buscarPorProviderSub(provider: string, providerSub: string): Promise<OAuthIdentityRecord | null> {
+    return (
+      [...this.identidades.values()].find(
+        (i) => i.provider === provider && i.providerSub === providerSub,
+      ) ?? null
+    );
+  }
+
+  async listarPorUsuario(userId: string): Promise<OAuthIdentityRecord[]> {
+    return [...this.identidades.values()].filter((i) => i.userId === userId);
+  }
+
+  async eliminar(id: string): Promise<void> {
+    this.identidades.delete(id);
+  }
+}
+
+export class PasswordResetRepositoryMemoria implements PasswordResetRepository {
+  private readonly resets = new Map<string, PasswordResetRecord>();
+
+  async crear(input: NuevoPasswordReset): Promise<PasswordResetRecord> {
+    const record: PasswordResetRecord = { ...input, usado: false, createdAt: new Date() };
+    this.resets.set(input.id, record);
+    return record;
+  }
+
+  async buscarVigentePorUsuario(userId: string): Promise<PasswordResetRecord | null> {
+    const ahora = Date.now();
+    return (
+      [...this.resets.values()]
+        .filter((r) => r.userId === userId && !r.usado && r.expiresAt.getTime() > ahora)
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0] ?? null
+    );
+  }
+
+  async marcarUsado(id: string): Promise<void> {
+    const r = this.resets.get(id);
+    if (r) this.resets.set(id, { ...r, usado: true });
+  }
+
+  async invalidarPorUsuario(userId: string): Promise<void> {
+    for (const [id, r] of this.resets) {
+      if (r.userId === userId && !r.usado) this.resets.set(id, { ...r, usado: true });
+    }
+  }
+}
+
+export class NotificationChannelRepositoryMemoria implements NotificationChannelRepository {
+  private readonly canales = new Map<string, NotificationChannelRecord>();
+
+  async crear(input: NuevoNotificationChannel): Promise<NotificationChannelRecord> {
+    const ahora = new Date();
+    const record: NotificationChannelRecord = {
+      ...input,
+      lastStatus: null,
+      lastError: null,
+      createdAt: ahora,
+      updatedAt: ahora,
+    };
+    this.canales.set(input.id, record);
+    return record;
+  }
+
+  async actualizar(id: string, cambios: CambiosNotificationChannel): Promise<NotificationChannelRecord> {
+    const existente = this.canales.get(id);
+    if (!existente) throw new Error(`Canal "${id}" no encontrado`);
+    const record: NotificationChannelRecord = { ...existente, ...cambios, updatedAt: new Date() };
+    this.canales.set(id, record);
+    return record;
+  }
+
+  async buscarPorId(id: string): Promise<NotificationChannelRecord | null> {
+    return this.canales.get(id) ?? null;
+  }
+
+  async listarPorTenant(tenantId: string): Promise<NotificationChannelRecord[]> {
+    return [...this.canales.values()]
+      .filter((c) => c.tenantId === tenantId)
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  }
+
+  async listarActivosPorEvento(tenantId: string, evento: string): Promise<NotificationChannelRecord[]> {
+    return [...this.canales.values()].filter(
+      (c) => c.tenantId === tenantId && c.activo && c.eventos.includes(evento),
+    );
+  }
+
+  async eliminar(id: string): Promise<void> {
+    this.canales.delete(id);
+  }
+}
+
+export class NotificationMessageRepositoryMemoria implements NotificationMessageRepository {
+  private readonly mensajes = new Map<string, NotificationMessageRecord>();
+
+  async crear(input: NuevoNotificationMessage): Promise<NotificationMessageRecord> {
+    const ahora = new Date();
+    const record: NotificationMessageRecord = {
+      ...input,
+      destino: input.destino ?? null,
+      intentos: 0,
+      proximoIntentoAt: null,
+      proveedorMensajeId: null,
+      respuesta: null,
+      error: null,
+      createdAt: ahora,
+      updatedAt: ahora,
+    };
+    this.mensajes.set(input.id, record);
+    return record;
+  }
+
+  async actualizar(id: string, cambios: CambiosNotificationMessage): Promise<NotificationMessageRecord> {
+    const existente = this.mensajes.get(id);
+    if (!existente) throw new Error(`Notificación "${id}" no encontrada`);
+    const record: NotificationMessageRecord = { ...existente, ...cambios, updatedAt: new Date() };
+    this.mensajes.set(id, record);
+    return record;
+  }
+
+  async buscarPorId(id: string): Promise<NotificationMessageRecord | null> {
+    return this.mensajes.get(id) ?? null;
+  }
+
+  async listarPorTenant(tenantId: string, filtro?: FiltroNotificacion): Promise<NotificationMessageRecord[]> {
+    return [...this.mensajes.values()]
+      .filter(
+        (m) =>
+          m.tenantId === tenantId &&
+          (!filtro?.estado || m.estado === filtro.estado) &&
+          (!filtro?.canalId || m.canalId === filtro.canalId),
+      )
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      .slice(0, filtro?.limite ?? 200);
+  }
+
+  async listarReintentables(limite: number): Promise<NotificationMessageRecord[]> {
+    const ahora = Date.now();
+    return [...this.mensajes.values()]
+      .filter(
+        (m) =>
+          (m.estado === "pendiente" || m.estado === "reintentando") &&
+          m.intentos < m.maxIntentos &&
+          (m.proximoIntentoAt === null || m.proximoIntentoAt.getTime() <= ahora),
+      )
+      .slice(0, limite);
   }
 }
 

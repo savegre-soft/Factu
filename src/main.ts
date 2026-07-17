@@ -4,6 +4,7 @@ import { buildServer } from "./server.js";
 import { iniciarPollerCorreo } from "./services/correo/poller.js";
 import { iniciarPollerEntrega } from "./services/entrega/poller.js";
 import { iniciarPollerWebhooks } from "./services/webhooks/poller.js";
+import { iniciarPollerNotificaciones } from "./services/notificaciones/poller.js";
 
 const app = buildServer();
 
@@ -25,6 +26,8 @@ app.listen({ port: env.PORT, host: "0.0.0.0" }).then(
     iniciarPollerEntrega((msg) => app.log.info(msg));
     // Reintentos de webhooks salientes (integraciones con sistemas externos).
     iniciarPollerWebhooks((msg) => app.log.info(msg));
+    // Reintentos de notificaciones (SMS, WhatsApp, Slack, Teams).
+    iniciarPollerNotificaciones((msg) => app.log.info(msg));
   },
   (err) => {
     app.log.error(err);

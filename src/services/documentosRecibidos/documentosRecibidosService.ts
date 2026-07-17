@@ -18,6 +18,7 @@ import type {
   DocumentoRecibidoRepository,
 } from "../../infra/repos/types.js";
 import { emitirEvento } from "../webhooks/index.js";
+import { notificarEvento } from "../notificaciones/index.js";
 
 export type OrigenDocumento = "manual" | "interno" | "correo";
 
@@ -67,7 +68,7 @@ export class DocumentosRecibidosService {
       origen,
     });
 
-    emitirEvento(tenantId, "documento.recibido", {
+    const datosEvento = {
       clave: documento.clave,
       tipo: documento.tipo,
       emisorNombre: documento.emisorNombre,
@@ -75,7 +76,9 @@ export class DocumentosRecibidosService {
       moneda: documento.moneda,
       totalComprobante: documento.totalComprobante,
       origen,
-    });
+    };
+    emitirEvento(tenantId, "documento.recibido", datosEvento);
+    notificarEvento(tenantId, "documento.recibido", datosEvento);
 
     return { documento, yaExistia: false };
   }

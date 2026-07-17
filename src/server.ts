@@ -21,6 +21,7 @@ import { estadisticasRoutes } from "./routes/estadisticas.js";
 import { apiKeyRoutes } from "./routes/apiKeys.js";
 import { webhookRoutes } from "./routes/webhooks.js";
 import { auditoriaRoutes } from "./routes/auditoria.js";
+import { notificacionesRoutes } from "./routes/notificaciones.js";
 import { registrarLog } from "./services/logs/index.js";
 
 /** Construye la instancia de Fastify con Swagger, autenticación y rutas. */
@@ -65,6 +66,7 @@ export function buildServer(): FastifyInstance {
   app.register(apiKeyRoutes); // /api-keys/*  (integraciones)
   app.register(webhookRoutes); // /webhooks/*  (integraciones salientes)
   app.register(auditoriaRoutes); // /auditoria, /logs  (registro, solo admin)
+  app.register(notificacionesRoutes); // /notification-*  (canales de comunicación)
 
   return app;
 }

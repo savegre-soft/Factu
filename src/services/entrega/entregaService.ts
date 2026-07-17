@@ -20,6 +20,7 @@ import type { EmailSender } from "./emailSender.js";
 import { asuntoFactura, cuerpoFacturaHtml } from "./plantillaCorreo.js";
 import { generarFacturaPdf, parsearParaPdf } from "./comprobantePdf.js";
 import { emitirEvento } from "../webhooks/index.js";
+import { notificarEvento } from "../notificaciones/index.js";
 import { registrarLog } from "../logs/index.js";
 
 export interface EntregaConfig {
@@ -170,12 +171,14 @@ export class EntregaService {
 
   /** Notifica a los webhooks el resultado final de la entrega al cliente. */
   private notificar(envio: EnvioComprobanteRecord, estado: "enviado" | "fallido"): void {
-    emitirEvento(envio.tenantId, "entrega.cliente", {
+    const datosEvento = {
       clave: envio.clave,
       cedulaEmisor: envio.cedulaEmisor,
       destinatario: envio.destinatario,
       estado,
-    });
+    };
+    emitirEvento(envio.tenantId, "entrega.cliente", datosEvento);
+    notificarEvento(envio.tenantId, "entrega.cliente", datosEvento);
     if (estado === "fallido") {
       registrarLog({
         nivel: "warn",

@@ -16,6 +16,14 @@ import { z } from "zod";
 import { env } from "../config/env.js";
 import { usuarioService } from "../services/usuarios/index.js";
 import { registrarAuditoria } from "../services/auditoria/index.js";
+import {
+  cuentaService,
+  passwordResetService,
+  proveedorOAuth,
+  proveedoresConfigurados,
+  firmarEstado,
+  verificarEstado,
+} from "../services/cuentas/index.js";
 import { Permiso, Rol } from "../domain/auth/roles.js";
 import type { JwtPayload } from "../plugins/auth.js";
 import {
@@ -30,6 +38,14 @@ import {
   actualizarUsuarioSchema,
   cambiarPasswordSchema,
   eliminarUsuarioSchema,
+  oauthProveedoresSchema,
+  oauthUrlSchema,
+  oauthVincularUrlSchema,
+  oauthCallbackSchema,
+  identidadesListarSchema,
+  identidadDesvincularSchema,
+  passwordOlvideSchema,
+  passwordResetSchema,
 } from "../plugins/schemas.js";
 
 const registroSchema = z.object({
@@ -113,7 +129,136 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     return { token, usuario: { id: usuario.id, email: usuario.email, nombre: usuario.nombre, rol: usuario.rol } };
   });
 
+  // --- OAuth (Google / Microsoft) ---
+  const redirectUri = (provider: string) => `${env.API_PUBLIC_URL}/auth/oauth/${provider}/callback`;
+
+  app.get("/auth/oauth/proveedores", { schema: oauthProveedoresSchema }, async () =>
+    proveedoresConfigurados(),
+  );
+
+  // URL de consentimiento para iniciar sesión / registrarse (público).
+  app.get("/auth/oauth/:provider/url", { schema: oauthUrlSchema }, async (request, reply) => {
+    const { provider } = request.params as { provider: string };
+    const prov = proveedorOAuth(provider);
+    if (!prov || !prov.configurado()) {
+      return reply.status(400).send({ error: `El proveedor "${provider}" no está disponible` });
+    }
+    const state = firmarEstado({ intent: "login" });
+    return { url: prov.urlAutorizacion(state, redirectUri(provider)) };
+  });
+
+  // URL de consentimiento para VINCULAR desde el perfil (autenticado).
+  app.post(
+    "/auth/oauth/:provider/url",
+    { schema: oauthVincularUrlSchema, preHandler: app.authenticate },
+    async (request, reply) => {
+      const { provider } = request.params as { provider: string };
+      const prov = proveedorOAuth(provider);
+      if (!prov || !prov.configurado()) {
+        return reply.status(400).send({ error: `El proveedor "${provider}" no está disponible` });
+      }
+      const state = firmarEstado({ intent: "link", userId: request.user.sub });
+      return { url: prov.urlAutorizacion(state, redirectUri(provider)) };
+    },
+  );
+
+  // Callback: canjea el code, resuelve la cuenta y redirige al frontend.
+  app.get("/auth/oauth/:provider/callback", { schema: oauthCallbackSchema }, async (request, reply) => {
+    const { provider } = request.params as { provider: string };
+    const { code, state } = request.query as { code?: string; state?: string };
+    const prov = proveedorOAuth(provider);
+
+    const estado = state ? verificarEstado(state) : null;
+    const esVinculo = estado?.intent === "link";
+    const okBase = esVinculo ? `${env.APP_URL}/perfil` : `${env.APP_URL}/oauth/callback`;
+    const fail = (msg: string) =>
+      reply.redirect(
+        esVinculo
+          ? `${okBase}?error=${encodeURIComponent(msg)}`
+          : `${okBase}#error=${encodeURIComponent(msg)}`,
+      );
+
+    if (!prov) return fail("Proveedor desconocido");
+    if (!code || !estado) return fail("Solicitud OAuth inválida o vencida");
+
+    try {
+      const perfil = await prov.intercambiar(code, redirectUri(provider));
+      const { usuario } = await cuentaService.resolverOAuth(prov.clave, perfil, estado);
+
+      if (esVinculo) {
+        registrarAuditoria({
+          tenantId: usuario.tenantId,
+          actor: { id: usuario.id, nombre: usuario.nombre, tipo: "usuario", ip: request.ip },
+          accion: "auth.oauth.vincular",
+          recurso: "identidad",
+          detalle: `${provider} (${perfil.email})`,
+        });
+        return reply.redirect(`${okBase}?vinculado=${provider}`);
+      }
+
+      const token = firmar({ sub: usuario.id, tenantId: usuario.tenantId, rol: usuario.rol, email: usuario.email });
+      registrarAuditoria({
+        tenantId: usuario.tenantId,
+        actor: { id: usuario.id, nombre: usuario.nombre, tipo: "usuario", ip: request.ip },
+        accion: "auth.login",
+        recurso: "sesion",
+        detalle: `Inicio de sesión con ${provider} (${usuario.email})`,
+      });
+      return reply.redirect(`${okBase}#token=${token}`);
+    } catch (err) {
+      return fail((err as Error).message);
+    }
+  });
+
+  // --- Reseteo de contraseña ---
+  app.post("/auth/password/olvide", { schema: passwordOlvideSchema }, async (request) => {
+    const { email } = request.body as { email: string };
+    await passwordResetService.solicitar(email);
+    // Respuesta idéntica exista o no el correo (no enumeración).
+    return { ok: true };
+  });
+
+  app.post("/auth/password/reset", { schema: passwordResetSchema }, async (request, reply) => {
+    const { email, codigo, password } = request.body as {
+      email: string;
+      codigo: string;
+      password: string;
+    };
+    if (password.length < 8) {
+      return reply.status(400).send({ error: "La contraseña debe tener al menos 8 caracteres" });
+    }
+    try {
+      await passwordResetService.resetear(email, codigo, password);
+      return { ok: true };
+    } catch (err) {
+      return reply.status(400).send({ error: (err as Error).message });
+    }
+  });
+
   // --- Autenticado ---
+  // Cuentas OAuth vinculadas del usuario actual.
+  app.get("/auth/yo/identidades", { schema: identidadesListarSchema, preHandler: app.authenticate }, async (request) => {
+    const identidades = await cuentaService.listarIdentidades(request.user.sub);
+    return identidades.map((i) => ({ provider: i.provider, email: i.email, createdAt: i.createdAt }));
+  });
+
+  app.delete(
+    "/auth/yo/identidades/:provider",
+    { schema: identidadDesvincularSchema, preHandler: app.authenticate },
+    async (request, reply) => {
+      const { provider } = request.params as { provider: string };
+      if (provider !== "google" && provider !== "microsoft") {
+        return reply.status(400).send({ error: "Proveedor desconocido" });
+      }
+      try {
+        const ok = await cuentaService.desvincular(request.user.sub, provider);
+        if (!ok) return reply.status(404).send({ error: "No tienes esa cuenta vinculada" });
+        return { provider, desvinculado: true };
+      } catch (err) {
+        return reply.status(400).send({ error: (err as Error).message });
+      }
+    },
+  );
   app.get("/auth/yo", { schema: authYoSchema, preHandler: app.authenticate }, async (request) => {
     // Para usuarios humanos incluimos el nombre; una API key de servicio no lo tiene.
     const usuario = await usuarioService.obtenerUsuario(request.user.tenantId, request.user.sub);
