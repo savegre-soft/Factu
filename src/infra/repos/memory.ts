@@ -11,23 +11,77 @@ import type {
   EmisorRecord,
   EmisorRepository,
   NuevoComprobante,
+  TenantRecord,
+  TenantRepository,
+  UsuarioRecord,
+  UsuarioRepository,
 } from "./types.js";
+
+export class TenantRepositoryMemoria implements TenantRepository {
+  private readonly tenants = new Map<string, TenantRecord>();
+
+  async crear(input: { id: string; nombre: string }): Promise<TenantRecord> {
+    const record: TenantRecord = { ...input, createdAt: new Date() };
+    this.tenants.set(input.id, record);
+    return record;
+  }
+
+  async buscar(id: string): Promise<TenantRecord | null> {
+    return this.tenants.get(id) ?? null;
+  }
+}
+
+export class UsuarioRepositoryMemoria implements UsuarioRepository {
+  private readonly usuarios = new Map<string, UsuarioRecord>();
+
+  async crear(input: Omit<UsuarioRecord, "createdAt">): Promise<UsuarioRecord> {
+    if (await this.buscarPorEmail(input.email)) {
+      throw new Error(`Ya existe un usuario con el correo "${input.email}"`);
+    }
+    const record: UsuarioRecord = { ...input, createdAt: new Date() };
+    this.usuarios.set(input.id, record);
+    return record;
+  }
+
+  async buscarPorEmail(email: string): Promise<UsuarioRecord | null> {
+    const buscado = email.toLowerCase();
+    return [...this.usuarios.values()].find((u) => u.email.toLowerCase() === buscado) ?? null;
+  }
+
+  async buscarPorId(id: string): Promise<UsuarioRecord | null> {
+    return this.usuarios.get(id) ?? null;
+  }
+
+  async listarPorTenant(tenantId: string): Promise<UsuarioRecord[]> {
+    return [...this.usuarios.values()].filter((u) => u.tenantId === tenantId);
+  }
+}
 
 export class EmisorRepositoryMemoria implements EmisorRepository {
   private readonly emisores = new Map<string, EmisorRecord>();
 
-  async upsert(input: { cedula: string; nombre: string }): Promise<EmisorRecord> {
+  async upsert(input: { cedula: string; tenantId: string; nombre: string }): Promise<EmisorRecord> {
     const ahora = new Date();
     const existente = this.emisores.get(input.cedula);
     const record: EmisorRecord = existente
       ? { ...existente, nombre: input.nombre, updatedAt: ahora }
-      : { cedula: input.cedula, nombre: input.nombre, createdAt: ahora, updatedAt: ahora };
+      : {
+          cedula: input.cedula,
+          tenantId: input.tenantId,
+          nombre: input.nombre,
+          createdAt: ahora,
+          updatedAt: ahora,
+        };
     this.emisores.set(input.cedula, record);
     return record;
   }
 
   async buscar(cedula: string): Promise<EmisorRecord | null> {
     return this.emisores.get(cedula) ?? null;
+  }
+
+  async listarPorTenant(tenantId: string): Promise<EmisorRecord[]> {
+    return [...this.emisores.values()].filter((e) => e.tenantId === tenantId);
   }
 
   async guardarCertificado(cedula: string, cert: CertificadoSellado): Promise<void> {

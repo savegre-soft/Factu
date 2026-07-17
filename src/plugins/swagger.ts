@@ -17,12 +17,23 @@ export function registrarSwagger(app: FastifyInstance): void {
       },
       servers: [{ url: "http://localhost:3000", description: "Local" }],
       tags: [
-        { name: "Auth", description: "Autenticación contra el IDP de Hacienda" },
+        { name: "Autenticación", description: "Registro, login y gestión de usuarios (tenants y roles)" },
+        { name: "Hacienda", description: "Sesión con el IDP de Hacienda por emisor" },
         { name: "Emisores", description: "Registro de emisores y carga de certificados" },
         { name: "Comprobantes", description: "Emisión y consulta de comprobantes" },
         { name: "Firma", description: "Firma XAdES (utilidades de prueba)" },
         { name: "Utilidades", description: "Salud y utilidades varias" },
       ],
+      components: {
+        securitySchemes: {
+          bearerAuth: {
+            type: "http",
+            scheme: "bearer",
+            bearerFormat: "JWT",
+            description: "Token JWT obtenido en POST /auth/login o /auth/registro",
+          },
+        },
+      },
     },
   });
 

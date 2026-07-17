@@ -7,6 +7,7 @@
  * Requiere: `npm run prisma:generate` y una base con las migraciones aplicadas.
  */
 import { PrismaClient } from "@prisma/client";
+import type { Rol } from "../../domain/auth/roles.js";
 import type {
   CertificadoSellado,
   ComprobanteRecord,
@@ -14,12 +15,53 @@ import type {
   EmisorRecord,
   EmisorRepository,
   NuevoComprobante,
+  TenantRecord,
+  TenantRepository,
+  UsuarioRecord,
+  UsuarioRepository,
 } from "./types.js";
 
 export const prisma = new PrismaClient();
 
+export class TenantRepositoryPrisma implements TenantRepository {
+  constructor(private readonly db: PrismaClient) {}
+
+  async crear(input: { id: string; nombre: string }): Promise<TenantRecord> {
+    return this.db.tenant.create({ data: input });
+  }
+
+  async buscar(id: string): Promise<TenantRecord | null> {
+    return this.db.tenant.findUnique({ where: { id } });
+  }
+}
+
+export class UsuarioRepositoryPrisma implements UsuarioRepository {
+  constructor(private readonly db: PrismaClient) {}
+
+  async crear(input: Omit<UsuarioRecord, "createdAt">): Promise<UsuarioRecord> {
+    const row = await this.db.usuario.create({ data: input });
+    return { ...row, rol: row.rol as Rol };
+  }
+
+  async buscarPorEmail(email: string): Promise<UsuarioRecord | null> {
+    const row = await this.db.usuario.findUnique({ where: { email: email.toLowerCase() } });
+    return row ? { ...row, rol: row.rol as Rol } : null;
+  }
+
+  async buscarPorId(id: string): Promise<UsuarioRecord | null> {
+    const row = await this.db.usuario.findUnique({ where: { id } });
+    return row ? { ...row, rol: row.rol as Rol } : null;
+  }
+
+  async listarPorTenant(tenantId: string): Promise<UsuarioRecord[]> {
+    const rows = await this.db.usuario.findMany({ where: { tenantId } });
+    return rows.map((r) => ({ ...r, rol: r.rol as Rol }));
+  }
+}
+
 type EmisorRow = {
   cedula: string;
+  tenantId: string;
   nombre: string;
   certP12: string | null;
   certPassword: string | null;
@@ -30,6 +72,7 @@ type EmisorRow = {
 function aEmisorRecord(row: EmisorRow): EmisorRecord {
   const record: EmisorRecord = {
     cedula: row.cedula,
+    tenantId: row.tenantId,
     nombre: row.nombre,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -46,10 +89,10 @@ function aEmisorRecord(row: EmisorRow): EmisorRecord {
 export class EmisorRepositoryPrisma implements EmisorRepository {
   constructor(private readonly db: PrismaClient) {}
 
-  async upsert(input: { cedula: string; nombre: string }): Promise<EmisorRecord> {
+  async upsert(input: { cedula: string; tenantId: string; nombre: string }): Promise<EmisorRecord> {
     const row = await this.db.emisor.upsert({
       where: { cedula: input.cedula },
-      create: { cedula: input.cedula, nombre: input.nombre },
+      create: { cedula: input.cedula, tenantId: input.tenantId, nombre: input.nombre },
       update: { nombre: input.nombre },
     });
     return aEmisorRecord(row);
@@ -58,6 +101,11 @@ export class EmisorRepositoryPrisma implements EmisorRepository {
   async buscar(cedula: string): Promise<EmisorRecord | null> {
     const row = await this.db.emisor.findUnique({ where: { cedula } });
     return row ? aEmisorRecord(row) : null;
+  }
+
+  async listarPorTenant(tenantId: string): Promise<EmisorRecord[]> {
+    const rows = await this.db.emisor.findMany({ where: { tenantId } });
+    return rows.map(aEmisorRecord);
   }
 
   async guardarCertificado(cedula: string, cert: CertificadoSellado): Promise<void> {

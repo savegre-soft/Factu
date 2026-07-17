@@ -12,9 +12,36 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+/// Organización (cliente de la API). Agrupa usuarios y emisores.
+model Tenant {
+  id        String   @id
+  nombre    String
+  createdAt DateTime @default(now())
+
+  usuarios  Usuario[]
+  emisores  Emisor[]
+}
+
+/// Usuario que accede a la API, dentro de un tenant y con un rol.
+model Usuario {
+  id           String   @id
+  tenantId     String
+  tenant       Tenant   @relation(fields: [tenantId], references: [id])
+  email        String   @unique
+  nombre       String
+  passwordHash String
+  /// admin | facturador | lector
+  rol          String
+  createdAt    DateTime @default(now())
+
+  @@index([tenantId])
+}
+
 /// Emisor de comprobantes electrónicos (la empresa que factura).
 model Emisor {
   cedula    String   @id
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
   nombre    String
   /// Certificado .p12 cifrado (JSON de SecretoSellado). NUNCA en texto plano.
   certP12       String?
@@ -24,6 +51,8 @@ model Emisor {
   updatedAt DateTime @updatedAt
 
   comprobantes Comprobante[]
+
+  @@index([tenantId])
 }
 
 /// Un comprobante electrónico emitido (factura, tiquete, nota, etc.).

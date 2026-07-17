@@ -146,10 +146,73 @@ export const claveSchema = {
   },
 } as const;
 
+const bearer = [{ bearerAuth: [] }];
+
+// --- Autenticación de usuarios ---
+
+export const authRegistroSchema = {
+  tags: ["Autenticación"],
+  summary: "Crea una organización (tenant) y su usuario administrador",
+  body: {
+    type: "object",
+    properties: {
+      tenantNombre: { type: "string", description: "Nombre de la organización" },
+      email: { type: "string", format: "email" },
+      nombre: { type: "string" },
+      password: { type: "string", minLength: 8 },
+    },
+    required: ["tenantNombre", "email", "nombre", "password"],
+  },
+} as const;
+
 export const authLoginSchema = {
-  tags: ["Auth"],
-  summary: "Inicia sesión contra el IDP de Hacienda y cachea los tokens",
-  description: "La clave `emisor` es la cédula bajo la que se guardan los tokens.",
+  tags: ["Autenticación"],
+  summary: "Inicia sesión y devuelve un JWT",
+  body: {
+    type: "object",
+    properties: {
+      email: { type: "string", format: "email" },
+      password: { type: "string" },
+    },
+    required: ["email", "password"],
+  },
+} as const;
+
+export const authYoSchema = {
+  tags: ["Autenticación"],
+  summary: "Perfil del usuario autenticado",
+  security: bearer,
+} as const;
+
+export const crearUsuarioSchema = {
+  tags: ["Autenticación"],
+  summary: "Crea un usuario en tu organización (solo admin)",
+  security: bearer,
+  body: {
+    type: "object",
+    properties: {
+      email: { type: "string", format: "email" },
+      nombre: { type: "string" },
+      password: { type: "string", minLength: 8 },
+      rol: { type: "string", enum: ["admin", "facturador", "lector"] },
+    },
+    required: ["email", "nombre", "password", "rol"],
+  },
+} as const;
+
+export const listarUsuariosSchema = {
+  tags: ["Autenticación"],
+  summary: "Lista los usuarios de tu organización (solo admin)",
+  security: bearer,
+} as const;
+
+// --- Sesión con Hacienda (por emisor) ---
+
+export const haciendaLoginSchema = {
+  tags: ["Hacienda"],
+  summary: "Inicia sesión contra el IDP de Hacienda para un emisor",
+  description: "Requiere JWT con permiso de emisión. El emisor debe ser de tu tenant.",
+  security: bearer,
   body: {
     type: "object",
     properties: {
@@ -161,19 +224,10 @@ export const authLoginSchema = {
   },
 } as const;
 
-export const authTokenSchema = {
-  tags: ["Auth"],
-  summary: "Devuelve un access token válido (renovando si hace falta)",
-  body: {
-    type: "object",
-    properties: { emisor: { type: "string" } },
-    required: ["emisor"],
-  },
-} as const;
-
-export const authLogoutSchema = {
-  tags: ["Auth"],
-  summary: "Cierra sesión en el IDP y descarta los tokens locales",
+export const haciendaEmisorSchema = {
+  tags: ["Hacienda"],
+  summary: "Token/logout de la sesión de Hacienda de un emisor",
+  security: bearer,
   body: {
     type: "object",
     properties: { emisor: { type: "string" } },

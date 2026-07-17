@@ -11,6 +11,10 @@ const schema = z.object({
   HACIENDA_CLIENT_ID: z.string().optional(),
   /** Llave maestra para cifrar certificados en reposo. En producción es OBLIGATORIA. */
   FACTU_MASTER_KEY: z.string().optional(),
+  /** Secreto para firmar los JWT de sesión de usuario. En producción es OBLIGATORIO. */
+  JWT_SECRET: z.string().optional(),
+  /** Vigencia del token de usuario (formato de `jsonwebtoken`, ej. "8h", "7d"). */
+  JWT_EXPIRES_IN: z.string().default("8h"),
   /** URL de la política de firma de Hacienda (XAdES-EPES). */
   HACIENDA_POLICY_URL: z.string().url().optional(),
   /** Digest SHA-256 (base64) del documento de la política de firma. */
