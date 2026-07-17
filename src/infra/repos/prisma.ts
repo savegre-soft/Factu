@@ -9,11 +9,15 @@
 import { PrismaClient } from "@prisma/client";
 import type { Rol } from "../../domain/auth/roles.js";
 import type {
+  ApiKeyRecord,
+  ApiKeyRepository,
+  CambiosUsuario,
   CertificadoSellado,
   ComprobanteRecord,
   ComprobanteRepository,
   EmisorRecord,
   EmisorRepository,
+  NuevaApiKey,
   NuevoComprobante,
   TenantRecord,
   TenantRepository,
@@ -56,6 +60,65 @@ export class UsuarioRepositoryPrisma implements UsuarioRepository {
   async listarPorTenant(tenantId: string): Promise<UsuarioRecord[]> {
     const rows = await this.db.usuario.findMany({ where: { tenantId } });
     return rows.map((r) => ({ ...r, rol: r.rol as Rol }));
+  }
+
+  async actualizar(id: string, cambios: CambiosUsuario): Promise<UsuarioRecord> {
+    const row = await this.db.usuario.update({ where: { id }, data: cambios });
+    return { ...row, rol: row.rol as Rol };
+  }
+
+  async eliminar(id: string): Promise<void> {
+    await this.db.usuario.delete({ where: { id } });
+  }
+}
+
+type ApiKeyRow = {
+  id: string;
+  tenantId: string;
+  label: string;
+  keyId: string;
+  secretHash: string;
+  rol: string;
+  emisoresPermitidos: string[];
+  lastUsedAt: Date | null;
+  expiresAt: Date | null;
+  revokedAt: Date | null;
+  createdAt: Date;
+};
+
+function aApiKeyRecord(row: ApiKeyRow): ApiKeyRecord {
+  return { ...row, rol: row.rol as Rol };
+}
+
+export class ApiKeyRepositoryPrisma implements ApiKeyRepository {
+  constructor(private readonly db: PrismaClient) {}
+
+  async crear(input: NuevaApiKey): Promise<ApiKeyRecord> {
+    const row = await this.db.apiKey.create({ data: input });
+    return aApiKeyRecord(row);
+  }
+
+  async buscarPorId(id: string): Promise<ApiKeyRecord | null> {
+    const row = await this.db.apiKey.findUnique({ where: { id } });
+    return row ? aApiKeyRecord(row) : null;
+  }
+
+  async buscarPorKeyId(keyId: string): Promise<ApiKeyRecord | null> {
+    const row = await this.db.apiKey.findUnique({ where: { keyId } });
+    return row ? aApiKeyRecord(row) : null;
+  }
+
+  async listarPorTenant(tenantId: string): Promise<ApiKeyRecord[]> {
+    const rows = await this.db.apiKey.findMany({ where: { tenantId } });
+    return rows.map(aApiKeyRecord);
+  }
+
+  async marcarUso(id: string): Promise<void> {
+    await this.db.apiKey.update({ where: { id }, data: { lastUsedAt: new Date() } });
+  }
+
+  async revocar(id: string): Promise<void> {
+    await this.db.apiKey.update({ where: { id }, data: { revokedAt: new Date() } });
   }
 }
 

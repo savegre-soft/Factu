@@ -11,6 +11,8 @@ import { firmaRoutes } from "./routes/firma.js";
 import { comprobanteRoutes } from "./routes/comprobante.js";
 import { mensajeReceptorRoutes } from "./routes/mensajeReceptor.js";
 import { emisorRoutes } from "./routes/emisor.js";
+import { estadisticasRoutes } from "./routes/estadisticas.js";
+import { apiKeyRoutes } from "./routes/apiKeys.js";
 
 /** Construye la instancia de Fastify con Swagger, autenticación y rutas. */
 export function buildServer(): FastifyInstance {
@@ -30,6 +32,8 @@ export function buildServer(): FastifyInstance {
   app.register(firmaRoutes);
   app.register(comprobanteRoutes);
   app.register(mensajeReceptorRoutes);
+  app.register(estadisticasRoutes); // /estadisticas/*
+  app.register(apiKeyRoutes); // /api-keys/*  (integraciones)
 
   return app;
 }

@@ -23,5 +23,11 @@ export async function emisorDelTenant(
     reply.status(403).send({ error: "El emisor no pertenece a tu organización" });
     return null;
   }
+  // Las API keys pueden limitarse a ciertos emisores; los humanos no traen lista.
+  const permitidos = request.user.emisores;
+  if (permitidos && permitidos.length > 0 && !permitidos.includes(cedula)) {
+    reply.status(403).send({ error: "Esta credencial no puede operar sobre este emisor" });
+    return null;
+  }
   return emisor;
 }

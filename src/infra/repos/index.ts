@@ -4,12 +4,14 @@
  */
 import { env } from "../../config/env.js";
 import {
+  ApiKeyRepositoryMemoria,
   EmisorRepositoryMemoria,
   ComprobanteRepositoryMemoria,
   TenantRepositoryMemoria,
   UsuarioRepositoryMemoria,
 } from "./memory.js";
 import type {
+  ApiKeyRepository,
   EmisorRepository,
   ComprobanteRepository,
   TenantRepository,
@@ -20,10 +22,12 @@ let emisorRepo: EmisorRepository;
 let comprobanteRepo: ComprobanteRepository;
 let tenantRepo: TenantRepository;
 let usuarioRepo: UsuarioRepository;
+let apiKeyRepo: ApiKeyRepository;
 
 if (env.PERSISTENCIA === "prisma") {
   // Import perezoso para no exigir el cliente de Prisma cuando se usa memoria.
   const {
+    ApiKeyRepositoryPrisma,
     EmisorRepositoryPrisma,
     ComprobanteRepositoryPrisma,
     TenantRepositoryPrisma,
@@ -34,17 +38,20 @@ if (env.PERSISTENCIA === "prisma") {
   comprobanteRepo = new ComprobanteRepositoryPrisma(prisma);
   tenantRepo = new TenantRepositoryPrisma(prisma);
   usuarioRepo = new UsuarioRepositoryPrisma(prisma);
+  apiKeyRepo = new ApiKeyRepositoryPrisma(prisma);
 } else {
   emisorRepo = new EmisorRepositoryMemoria();
   comprobanteRepo = new ComprobanteRepositoryMemoria();
   tenantRepo = new TenantRepositoryMemoria();
   usuarioRepo = new UsuarioRepositoryMemoria();
+  apiKeyRepo = new ApiKeyRepositoryMemoria();
 }
 
 export const emisorRepository = emisorRepo;
 export const comprobanteRepository = comprobanteRepo;
 export const tenantRepository = tenantRepo;
 export const usuarioRepository = usuarioRepo;
+export const apiKeyRepository = apiKeyRepo;
 
 /** Llave maestra efectiva (con aviso si no se configuró en desarrollo). */
 export function masterKey(): string {

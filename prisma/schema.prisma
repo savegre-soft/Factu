@@ -20,6 +20,7 @@ model Tenant {
 
   usuarios  Usuario[]
   emisores  Emisor[]
+  apiKeys   ApiKey[]
 }
 
 /// Usuario que accede a la API, dentro de un tenant y con un rol.
@@ -33,6 +34,30 @@ model Usuario {
   /// admin | facturador | lector
   rol          String
   createdAt    DateTime @default(now())
+
+  @@index([tenantId])
+}
+
+/// Credencial de una aplicación externa (cuenta de servicio) para emitir vía API.
+/// Se guarda solo el hash del secreto; el `keyId` (público) permite el lookup.
+model ApiKey {
+  id                 String    @id
+  tenantId           String
+  tenant             Tenant    @relation(fields: [tenantId], references: [id])
+  /// Nombre legible de la integración (ej. "ERP de ventas").
+  label              String
+  /// Prefijo público e indexado de la key (para lookup O(1)).
+  keyId              String    @unique
+  /// Hash scrypt del secreto (nunca el secreto en claro).
+  secretHash         String
+  /// Rol efectivo de la credencial: facturador | lector.
+  rol                String
+  /// Cédulas de emisor a las que se limita (vacío = todos los del tenant).
+  emisoresPermitidos String[]
+  lastUsedAt         DateTime?
+  expiresAt          DateTime?
+  revokedAt          DateTime?
+  createdAt          DateTime  @default(now())
 
   @@index([tenantId])
 }

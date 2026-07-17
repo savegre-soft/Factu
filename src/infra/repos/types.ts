@@ -35,11 +35,55 @@ export interface TenantRepository {
   buscar(id: string): Promise<TenantRecord | null>;
 }
 
+/** Campos de un usuario que se pueden modificar tras crearlo. */
+export type CambiosUsuario = Partial<Pick<UsuarioRecord, "nombre" | "rol" | "passwordHash">>;
+
 export interface UsuarioRepository {
   crear(input: Omit<UsuarioRecord, "createdAt">): Promise<UsuarioRecord>;
   buscarPorEmail(email: string): Promise<UsuarioRecord | null>;
   buscarPorId(id: string): Promise<UsuarioRecord | null>;
   listarPorTenant(tenantId: string): Promise<UsuarioRecord[]>;
+  actualizar(id: string, cambios: CambiosUsuario): Promise<UsuarioRecord>;
+  eliminar(id: string): Promise<void>;
+}
+
+// ---- API keys (cuentas de servicio para apps externas) ----
+
+export interface ApiKeyRecord {
+  id: string;
+  tenantId: string;
+  label: string;
+  /** Prefijo público e indexado (permite el lookup sin escanear todo). */
+  keyId: string;
+  /** Hash del secreto (nunca el secreto en claro). */
+  secretHash: string;
+  rol: Rol;
+  /** Cédulas de emisor permitidas; vacío = todos los del tenant. */
+  emisoresPermitidos: string[];
+  lastUsedAt: Date | null;
+  expiresAt: Date | null;
+  revokedAt: Date | null;
+  createdAt: Date;
+}
+
+export interface NuevaApiKey {
+  id: string;
+  tenantId: string;
+  label: string;
+  keyId: string;
+  secretHash: string;
+  rol: Rol;
+  emisoresPermitidos: string[];
+  expiresAt: Date | null;
+}
+
+export interface ApiKeyRepository {
+  crear(input: NuevaApiKey): Promise<ApiKeyRecord>;
+  buscarPorId(id: string): Promise<ApiKeyRecord | null>;
+  buscarPorKeyId(keyId: string): Promise<ApiKeyRecord | null>;
+  listarPorTenant(tenantId: string): Promise<ApiKeyRecord[]>;
+  marcarUso(id: string): Promise<void>;
+  revocar(id: string): Promise<void>;
 }
 
 // ---- Emisores ----

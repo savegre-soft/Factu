@@ -1,11 +1,15 @@
 /**
  * Autenticación de usuarios de la API (tenants, roles, multiusuario).
  *
- *  POST /auth/registro   → crea un tenant + usuario admin (público)
- *  POST /auth/login      → devuelve un JWT (público)
- *  GET  /auth/yo         → perfil del usuario autenticado
- *  POST /auth/usuarios   → admin crea usuarios en su tenant
- *  GET  /auth/usuarios   → admin lista los usuarios de su tenant
+ *  POST   /auth/registro             → crea un tenant + usuario admin (público)
+ *  POST   /auth/login                → devuelve un JWT (público)
+ *  GET    /auth/yo                   → perfil del usuario autenticado
+ *  POST   /auth/usuarios             → admin crea usuarios en su tenant
+ *  GET    /auth/usuarios             → admin lista los usuarios de su tenant
+ *  GET    /auth/usuarios/:id         → admin consulta un usuario
+ *  PATCH  /auth/usuarios/:id         → admin cambia nombre y/o rol
+ *  PUT    /auth/usuarios/:id/password→ admin fija una contraseña nueva
+ *  DELETE /auth/usuarios/:id         → admin elimina un usuario
  */
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
@@ -19,6 +23,10 @@ import {
   authYoSchema,
   crearUsuarioSchema,
   listarUsuariosSchema,
+  usuarioGetSchema,
+  actualizarUsuarioSchema,
+  cambiarPasswordSchema,
+  eliminarUsuarioSchema,
 } from "../plugins/schemas.js";
 
 const registroSchema = z.object({
@@ -39,6 +47,17 @@ const nuevoUsuarioSchema = z.object({
   password: z.string().min(8),
   rol: z.nativeEnum(Rol),
 });
+
+const cambiosUsuarioSchema = z
+  .object({
+    nombre: z.string().min(1).optional(),
+    rol: z.nativeEnum(Rol).optional(),
+  })
+  .refine((c) => c.nombre !== undefined || c.rol !== undefined, {
+    message: "Indica al menos un campo a actualizar (nombre o rol)",
+  });
+
+const passwordSchema = z.object({ password: z.string().min(8) });
 
 export async function authRoutes(app: FastifyInstance): Promise<void> {
   function firmar(payload: JwtPayload): string {
@@ -115,6 +134,74 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     { schema: listarUsuariosSchema, preHandler: app.requierePermiso(Permiso.GestionarUsuarios) },
     async (request) => {
       return usuarioService.listarUsuarios(request.user.tenantId);
+    },
+  );
+
+  app.get(
+    "/auth/usuarios/:id",
+    { schema: usuarioGetSchema, preHandler: app.requierePermiso(Permiso.GestionarUsuarios) },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const usuario = await usuarioService.obtenerUsuario(request.user.tenantId, id);
+      if (!usuario) return reply.status(404).send({ error: "Usuario no encontrado" });
+      return usuario;
+    },
+  );
+
+  app.patch(
+    "/auth/usuarios/:id",
+    { schema: actualizarUsuarioSchema, preHandler: app.requierePermiso(Permiso.GestionarUsuarios) },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const parsed = cambiosUsuarioSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.status(400).send({ error: "Entrada inválida", detalles: parsed.error.issues });
+      }
+      try {
+        const usuario = await usuarioService.actualizarUsuario(
+          request.user.tenantId,
+          id,
+          parsed.data,
+        );
+        if (!usuario) return reply.status(404).send({ error: "Usuario no encontrado" });
+        return usuario;
+      } catch (err) {
+        return reply.status(409).send({ error: (err as Error).message });
+      }
+    },
+  );
+
+  app.put(
+    "/auth/usuarios/:id/password",
+    { schema: cambiarPasswordSchema, preHandler: app.requierePermiso(Permiso.GestionarUsuarios) },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const parsed = passwordSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.status(400).send({ error: "Entrada inválida", detalles: parsed.error.issues });
+      }
+      const usuario = await usuarioService.cambiarPassword(
+        request.user.tenantId,
+        id,
+        parsed.data.password,
+      );
+      if (!usuario) return reply.status(404).send({ error: "Usuario no encontrado" });
+      return { id: usuario.id, passwordActualizada: true };
+    },
+  );
+
+  app.delete(
+    "/auth/usuarios/:id",
+    { schema: eliminarUsuarioSchema, preHandler: app.requierePermiso(Permiso.GestionarUsuarios) },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      try {
+        const eliminado = await usuarioService.eliminarUsuario(request.user.tenantId, id);
+        if (!eliminado) return reply.status(404).send({ error: "Usuario no encontrado" });
+        return reply.status(204).send();
+      } catch (err) {
+        return reply.status(409).send({ error: (err as Error).message });
+      }
     },
   );
 }

@@ -206,6 +206,107 @@ export const listarUsuariosSchema = {
   security: bearer,
 } as const;
 
+const usuarioIdParams = {
+  type: "object",
+  properties: { id: { type: "string", description: "Id del usuario" } },
+  required: ["id"],
+} as const;
+
+export const usuarioGetSchema = {
+  tags: ["Usuarios"],
+  summary: "Consulta un usuario de tu organización (solo admin)",
+  security: bearer,
+  params: usuarioIdParams,
+} as const;
+
+export const actualizarUsuarioSchema = {
+  tags: ["Usuarios"],
+  summary: "Actualiza el nombre y/o el rol de un usuario (solo admin)",
+  description:
+    "No permite quitar el rol admin al único administrador de la organización (dejaría al tenant sin quien lo gestione).",
+  security: bearer,
+  params: usuarioIdParams,
+  body: {
+    type: "object",
+    properties: {
+      nombre: { type: "string" },
+      rol: { type: "string", enum: ["admin", "facturador", "lector"] },
+    },
+    minProperties: 1,
+  },
+} as const;
+
+export const cambiarPasswordSchema = {
+  tags: ["Usuarios"],
+  summary: "Cambia la contraseña de un usuario de tu organización (solo admin)",
+  security: bearer,
+  params: usuarioIdParams,
+  body: {
+    type: "object",
+    properties: { password: { type: "string", minLength: 8 } },
+    required: ["password"],
+  },
+} as const;
+
+export const eliminarUsuarioSchema = {
+  tags: ["Usuarios"],
+  summary: "Elimina un usuario de tu organización (solo admin)",
+  description: "No permite eliminar al único administrador de la organización.",
+  security: bearer,
+  params: usuarioIdParams,
+} as const;
+
+// --- Estadísticas ---
+
+// Sin `format: date-time` a propósito: así se admite también la fecha corta
+// (2026-07-01). El parseo y el orden desde/hasta los valida zod en la ruta.
+const rangoFechas = {
+  type: "object",
+  properties: {
+    desde: {
+      type: "string",
+      description: "Límite inferior, inclusive. ISO 8601 (2026-07-01 o 2026-07-01T10:00:00Z)",
+    },
+    hasta: {
+      type: "string",
+      description: "Límite superior, inclusive. ISO 8601 (2026-07-31 o 2026-07-31T23:59:59Z)",
+    },
+  },
+} as const;
+
+export const estadisticasResumenSchema = {
+  tags: ["Estadísticas"],
+  summary: "Resumen de tu organización: usuarios, emisores y comprobantes",
+  security: bearer,
+  querystring: rangoFechas,
+} as const;
+
+export const estadisticasEmisoresSchema = {
+  tags: ["Estadísticas"],
+  summary: "Desglose de comprobantes por cada emisor de tu organización",
+  security: bearer,
+  querystring: rangoFechas,
+} as const;
+
+export const estadisticasEmisorSchema = {
+  tags: ["Estadísticas"],
+  summary: "Estadísticas de un emisor concreto",
+  security: bearer,
+  params: {
+    type: "object",
+    properties: { cedula: { type: "string" } },
+    required: ["cedula"],
+  },
+  querystring: rangoFechas,
+} as const;
+
+export const estadisticasSerieSchema = {
+  tags: ["Estadísticas"],
+  summary: "Comprobantes emitidos por día",
+  security: bearer,
+  querystring: rangoFechas,
+} as const;
+
 // --- Sesión con Hacienda (por emisor) ---
 
 export const haciendaLoginSchema = {
@@ -332,5 +433,44 @@ export const firmaDemoSchema = {
     type: "object",
     properties: { xml: { type: "string" } },
     required: ["xml"],
+  },
+} as const;
+
+export const apiKeyCrearSchema = {
+  tags: ["Integraciones"],
+  summary: "Crea una API key para una aplicación externa (solo admin)",
+  description:
+    "Devuelve el secreto en claro UNA sola vez. Guárdalo: después solo queda su hash. La app externa lo envía como `Authorization: Bearer factu_...`.",
+  security: bearer,
+  body: {
+    type: "object",
+    properties: {
+      label: { type: "string", description: "Nombre de la integración (ej. \"ERP de ventas\")" },
+      rol: { type: "string", enum: ["facturador", "lector"], description: "Alcance de la credencial" },
+      emisores: {
+        type: "array",
+        items: { type: "string" },
+        description: "Cédulas de emisor permitidas; vacío = todos los del tenant",
+      },
+      expiresAt: { type: "string", format: "date-time", description: "Vencimiento opcional" },
+    },
+    required: ["label"],
+  },
+} as const;
+
+export const apiKeyListarSchema = {
+  tags: ["Integraciones"],
+  summary: "Lista las API keys de tu organización (solo admin)",
+  security: bearer,
+} as const;
+
+export const apiKeyRevocarSchema = {
+  tags: ["Integraciones"],
+  summary: "Revoca una API key (solo admin)",
+  security: bearer,
+  params: {
+    type: "object",
+    properties: { id: { type: "string" } },
+    required: ["id"],
   },
 } as const;

@@ -5,11 +5,15 @@
  * al reiniciar; para producción se usa la implementación Prisma.
  */
 import type {
+  ApiKeyRecord,
+  ApiKeyRepository,
+  CambiosUsuario,
   CertificadoSellado,
   ComprobanteRecord,
   ComprobanteRepository,
   EmisorRecord,
   EmisorRepository,
+  NuevaApiKey,
   NuevoComprobante,
   TenantRecord,
   TenantRepository,
@@ -54,6 +58,57 @@ export class UsuarioRepositoryMemoria implements UsuarioRepository {
 
   async listarPorTenant(tenantId: string): Promise<UsuarioRecord[]> {
     return [...this.usuarios.values()].filter((u) => u.tenantId === tenantId);
+  }
+
+  async actualizar(id: string, cambios: CambiosUsuario): Promise<UsuarioRecord> {
+    const existente = this.usuarios.get(id);
+    if (!existente) throw new Error(`Usuario "${id}" no encontrado`);
+    const record: UsuarioRecord = { ...existente, ...cambios };
+    this.usuarios.set(id, record);
+    return record;
+  }
+
+  async eliminar(id: string): Promise<void> {
+    if (!this.usuarios.delete(id)) throw new Error(`Usuario "${id}" no encontrado`);
+  }
+}
+
+export class ApiKeyRepositoryMemoria implements ApiKeyRepository {
+  private readonly keys = new Map<string, ApiKeyRecord>();
+
+  async crear(input: NuevaApiKey): Promise<ApiKeyRecord> {
+    const record: ApiKeyRecord = {
+      ...input,
+      lastUsedAt: null,
+      revokedAt: null,
+      createdAt: new Date(),
+    };
+    this.keys.set(input.id, record);
+    return record;
+  }
+
+  async buscarPorId(id: string): Promise<ApiKeyRecord | null> {
+    return this.keys.get(id) ?? null;
+  }
+
+  async buscarPorKeyId(keyId: string): Promise<ApiKeyRecord | null> {
+    return [...this.keys.values()].find((k) => k.keyId === keyId) ?? null;
+  }
+
+  async listarPorTenant(tenantId: string): Promise<ApiKeyRecord[]> {
+    return [...this.keys.values()].filter((k) => k.tenantId === tenantId);
+  }
+
+  async marcarUso(id: string): Promise<void> {
+    const existente = this.keys.get(id);
+    if (existente) this.keys.set(id, { ...existente, lastUsedAt: new Date() });
+  }
+
+  async revocar(id: string): Promise<void> {
+    const existente = this.keys.get(id);
+    if (existente && !existente.revokedAt) {
+      this.keys.set(id, { ...existente, revokedAt: new Date() });
+    }
   }
 }
 
