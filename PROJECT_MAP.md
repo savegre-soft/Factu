@@ -45,7 +45,7 @@ ruta.
 | `webhooks.ts` | `/webhooks/*` | `services/webhooks` (`webhookService`, `emitirEvento`, `poller.ts`) | modelos `Webhook`, `WebhookEntrega` |
 | `auditoria.ts` | `/auditoria`, `/logs` | `services/auditoria`, `services/logs` | modelos `RegistroAuditoria`, `RegistroLog` |
 | `notificaciones.ts` | `/notification-*`, `/notifications` | `services/notificaciones` (`notificacionesService`, `notificarEvento`, `poller.ts`) | modelos `NotificationChannel`, `NotificationMessage` |
-| `_guards.ts` | — | Guards de rol/permiso reutilizados por las rutas (`soloAdmin`, `soloLectura`, etc.) | `domain/auth/roles.ts` |
+| `_guards.ts` | — | Guards de tenant/permiso reutilizados por las rutas: `emisorDelTenant()` (existe + pertenece al tenant + dentro del scope de emisores de una API key), `puedeGestionarEmisor()` (B7, 2026-07-30 — humano admin, o API key `facturador` scoped a esa cédula) | `domain/auth/roles.ts` |
 
 La entrega al cliente (`services/entrega/*`: `entregaService`, `comprobantePdf.ts`,
 `emailSender.ts`, `plantillaCorreo.ts`, `poller.ts`) se dispara desde `comprobante.ts`
@@ -57,7 +57,7 @@ Usa el modelo `EnvioComprobante`.
 | Módulo | Contenido |
 |---|---|
 | `clave/clave.ts` | Clave numérica (50 díg.) y consecutivo (20 díg.). |
-| `factura/types.ts` | Tipos de negocio: `Emisor`, `Receptor`, `LineaDetalle`, `Moneda`, `InformacionReferencia`, enums `TipoIdentificacion`/`CondicionVenta`. |
+| `factura/types.ts` | Tipos de negocio: `Emisor`, `Receptor`, `LineaDetalle`, `Moneda`, `InformacionReferencia`, `Exoneracion` (por impuesto/línea, D10, 2026-07-30), enums `TipoIdentificacion`/`CondicionVenta`. |
 | `factura/facturaXml.ts` | Generador de XML v4.4 (`TipoDocumento`: factura, tiquete, NC, ND). |
 | `factura/totales.ts` | Cálculo de totales/impuestos/descuentos. |
 | `mensajeReceptor/mensajeReceptor.ts` | XML de Mensaje Receptor (aceptar/rechazar/parcial). |
@@ -90,10 +90,11 @@ Usa el modelo `EnvioComprobante`.
 ## Modelos Prisma (`prisma/schema.prisma`)
 
 `Tenant`, `Usuario`, `OAuthIdentity`, `PasswordReset`, `ApiKey`, `Emisor`,
-`Cliente`, `Comprobante`, `Borrador`, `DocumentoRecibido`, `Buzon`,
-`SmtpSaliente`, `EnvioComprobante`, `Webhook`, `WebhookEntrega`,
-`NotificationChannel`, `NotificationMessage`, `Mensaje`, `RegistroAuditoria`,
-`RegistroLog`.
+`Cliente`, `Comprobante`, `ConsecutivoContador` (D9, 2026-07-30 — contador
+atómico de consecutivo por emisor+sucursal+terminal+tipo), `Borrador`,
+`DocumentoRecibido`, `Buzon`, `SmtpSaliente`, `EnvioComprobante`, `Webhook`,
+`WebhookEntrega`, `NotificationChannel`, `NotificationMessage`, `Mensaje`,
+`RegistroAuditoria`, `RegistroLog`.
 
 ## Documentación relacionada
 

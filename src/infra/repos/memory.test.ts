@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { EmisorRepositoryMemoria, ComprobanteRepositoryMemoria } from "./memory.js";
+import {
+  EmisorRepositoryMemoria,
+  ComprobanteRepositoryMemoria,
+  ConsecutivoRepositoryMemoria,
+} from "./memory.js";
 
 describe("EmisorRepositoryMemoria", () => {
   it("upsert crea y luego actualiza conservando createdAt", async () => {
@@ -48,5 +52,41 @@ describe("ComprobanteRepositoryMemoria", () => {
 
     expect(await repo.listarPorEmisor("3101")).toHaveLength(2);
     expect(await repo.listarPorEmisor("otro")).toHaveLength(1);
+  });
+});
+
+describe("ConsecutivoRepositoryMemoria", () => {
+  it("devuelve valores crecientes en llamadas sucesivas", async () => {
+    const repo = new ConsecutivoRepositoryMemoria();
+    expect(await repo.siguiente("3101", 1, 1, "01")).toBe(1);
+    expect(await repo.siguiente("3101", 1, 1, "01")).toBe(2);
+    expect(await repo.siguiente("3101", 1, 1, "01")).toBe(3);
+  });
+
+  it("no mezcla contadores de distinta sucursal/terminal/tipo", async () => {
+    const repo = new ConsecutivoRepositoryMemoria();
+    expect(await repo.siguiente("3101", 1, 1, "01")).toBe(1);
+    expect(await repo.siguiente("3101", 2, 1, "01")).toBe(1); // otra sucursal
+    expect(await repo.siguiente("3101", 1, 2, "01")).toBe(1); // otro terminal
+    expect(await repo.siguiente("3101", 1, 1, "04")).toBe(1); // otro tipo (tiquete)
+    expect(await repo.siguiente("3101", 1, 1, "01")).toBe(2); // el original sigue en 2
+  });
+
+  it("resuelve 5 llamadas 'concurrentes' sin colisión (Promise.all)", async () => {
+    const repo = new ConsecutivoRepositoryMemoria();
+    const valores = await Promise.all(
+      Array.from({ length: 5 }, () => repo.siguiente("3101", 1, 1, "01")),
+    );
+    expect(new Set(valores).size).toBe(5);
+    expect([...valores].sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5]);
+  });
+
+  it("registrarSiUsado avanza el contador pero nunca lo retrocede", async () => {
+    const repo = new ConsecutivoRepositoryMemoria();
+    await repo.registrarSiUsado("3101", 1, 1, "01", 10);
+    expect(await repo.siguiente("3101", 1, 1, "01")).toBe(11);
+
+    await repo.registrarSiUsado("3101", 1, 1, "01", 3); // menor: no retrocede
+    expect(await repo.siguiente("3101", 1, 1, "01")).toBe(12);
   });
 });

@@ -87,7 +87,7 @@ Inicializa la base y arranca todo.
 </tr>
 </table>
 
-> 🏠 **Inicio:** http://localhost:3000 &nbsp;·&nbsp; 📖 **Docs (Scalar):** http://localhost:3000/docs &nbsp;·&nbsp; 🧪 **Swagger:** http://localhost:3000/swagger
+> 🏠 **Inicio:** http://localhost:3001 &nbsp;·&nbsp; 📖 **Docs (Scalar):** http://localhost:3001/docs &nbsp;·&nbsp; 🧪 **Swagger:** http://localhost:3001/swagger
 
 ---
 
@@ -95,27 +95,27 @@ Inicializa la base y arranca todo.
 
 ```bash
 # 0️⃣  Crear organización + usuario admin  →  devuelve un JWT
-TOKEN=$(curl -s -X POST http://localhost:3000/auth/registro \
+TOKEN=$(curl -s -X POST http://localhost:3001/auth/registro \
   -H "Content-Type: application/json" \
   -d '{ "tenantNombre": "Mi Empresa", "email": "admin@miempresa.cr", "nombre": "Admin", "password": "unaClaveSegura" }' \
   | node -e "process.stdin.on('data',d=>console.log(JSON.parse(d).token))")
 
 # 1️⃣  Registrar emisor + subir su certificado  (Authorization: Bearer $TOKEN)
-curl -X POST http://localhost:3000/emisor \
+curl -X POST http://localhost:3001/emisor \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{ "cedula": "3101123456", "nombre": "Empresa X S.A." }'
 
-curl -X POST http://localhost:3000/emisor/3101123456/certificado \
+curl -X POST http://localhost:3001/emisor/3101123456/certificado \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{ "p12Base64": "<.p12 en base64>", "password": "<PIN>" }'
 
 # 2️⃣  Autenticar el emisor contra el IDP de Hacienda
-curl -X POST http://localhost:3000/hacienda/login \
+curl -X POST http://localhost:3001/hacienda/login \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{ "emisor": "3101123456", "username": "<usuario>", "password": "<clave>" }'
 
 # 3️⃣  Emitir  (factura | tiquete | nota-credito | nota-debito)
-curl -X POST http://localhost:3000/comprobante/factura/enviar \
+curl -X POST http://localhost:3001/comprobante/factura/enviar \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{ "cedulaEmisor": "3101123456", "consecutivo": 1, "codigoActividadEmisor": "620100",
         "emisor": { "nombre": "Empresa X S.A.", "identificacion": { "tipo": "02", "numero": "3101123456" },
@@ -152,7 +152,7 @@ curl -X POST http://localhost:3000/comprobante/factura/enviar \
 > 🔒 Todos los endpoints (salvo `/`, `/health`, `/auth/registro` y `/auth/login`) requieren
 > `Authorization: Bearer <JWT>`. Roles: **admin** · **facturador** · **lector**.
 
-<div align="right"><sub>Referencia completa e interactiva en <a href="http://localhost:3000/docs"><code>/docs</code></a> (Swagger)</sub></div>
+<div align="right"><sub>Referencia completa e interactiva en <a href="http://localhost:3001/docs"><code>/docs</code></a> (Swagger)</sub></div>
 
 ---
 

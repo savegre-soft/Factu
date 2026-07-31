@@ -639,6 +639,30 @@ export interface ComprobanteRepository {
   listarPorEmisor(cedula: string): Promise<ComprobanteRecord[]>;
 }
 
+// ---- Contador atómico de consecutivo (D9) ----
+
+export interface ConsecutivoRepository {
+  /** Devuelve el siguiente valor (atómico) para esta combinación. */
+  siguiente(
+    cedulaEmisor: string,
+    sucursal: number,
+    terminal: number,
+    tipo: string,
+  ): Promise<number>;
+  /**
+   * Registra que `valor` ya fue usado (el cliente lo mandó explícito), para
+   * que el contador nunca vuelva a asignar algo ≤ `valor`. No retrocede el
+   * contador si ya iba más adelante.
+   */
+  registrarSiUsado(
+    cedulaEmisor: string,
+    sucursal: number,
+    terminal: number,
+    tipo: string,
+    valor: number,
+  ): Promise<void>;
+}
+
 // ---- Envíos del comprobante al cliente (auditoría de correo saliente) ----
 
 export type EstadoEnvio = "pendiente" | "enviado" | "fallido";

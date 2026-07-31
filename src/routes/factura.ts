@@ -28,6 +28,16 @@ const ubicacionSchema = z.object({
   otrasSenas: z.string(),
 });
 
+const exoneracionSchema = z.object({
+  tipoDocumento: z.string(),
+  numeroDocumento: z.string(),
+  nombreInstitucion: z.string(),
+  nombreInstitucionOtros: z.string().optional(),
+  fechaEmisionDocumento: z.coerce.date(),
+  porcentajeExoneracion: z.number(),
+  montoExoneracion: z.number(),
+});
+
 const lineaSchema = z.object({
   codigoCabys: z.string().length(13),
   cantidad: z.number().positive(),
@@ -44,6 +54,7 @@ const lineaSchema = z.object({
         codigo: z.nativeEnum(CodigoImpuesto),
         codigoTarifa: z.string(),
         tarifa: z.number().nonnegative(),
+        exoneracion: exoneracionSchema.optional(),
       }),
     )
     .optional(),
@@ -54,7 +65,13 @@ export const datosFacturaSchema = z.object({
   cedulaEmisor: z.string().regex(/^\d+$/),
   sucursal: z.number().int().nonnegative().default(1),
   terminal: z.number().int().nonnegative().default(1),
-  consecutivo: z.number().int().nonnegative(),
+  /**
+   * Opcional desde D9: si se omite, `/comprobante/:tipo/enviar` lo asigna de
+   * forma atómica server-side (ver `consecutivoRepository`). `/factura/xml`
+   * (esta ruta, solo genera el XML sin persistir nada) sigue exigiéndolo
+   * explícito, ya que no tiene emisor real de donde resolverlo.
+   */
+  consecutivo: z.number().int().nonnegative().optional(),
   // Datos de la factura (hito 3)
   codigoActividadEmisor: z.string(),
   codigoActividadReceptor: z.string().optional(),
@@ -104,6 +121,15 @@ export async function facturaRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(400).send({ error: "Entrada inválida", detalles: parsed.error.issues });
     }
     const b = parsed.data;
+    // Esta ruta solo genera el XML sin persistir nada — no hay emisor real del
+    // que resolver un consecutivo atómico (eso es `/comprobante/:tipo/enviar`),
+    // así que aquí sigue siendo obligatorio pese a ser opcional en el schema.
+    if (b.consecutivo === undefined) {
+      return reply.status(400).send({
+        error: "Entrada inválida",
+        detalles: [{ path: ["consecutivo"], message: "Obligatorio para generar el XML sin persistir" }],
+      });
+    }
 
     const { clave, consecutivo } = generarClave({
       cedulaEmisor: b.cedulaEmisor,

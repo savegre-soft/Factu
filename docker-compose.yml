@@ -1,6 +1,10 @@
 # Levanta la API + PostgreSQL para correr todo en la laptop:
 #   docker compose up --build
-# Luego: API en http://localhost:3000 y documentación en http://localhost:3000/docs
+# Luego: API en http://localhost:3001 y documentación en http://localhost:3001/docs
+#
+# Puertos de host deliberadamente distintos de RestauCloud-API (3000/5432,
+# `../../RestroCloud/RestauCloud-API`) — ambos proyectos corren en la misma
+# máquina de desarrollo y competían por los mismos puertos por defecto.
 
 services:
   db:
@@ -10,7 +14,7 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: factu
     ports:
-      - "5432:5432"
+      - "5434:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -50,7 +54,7 @@ services:
     # Crea/actualiza las tablas y arranca el servidor
     command: sh -c "npx prisma db push --skip-generate && node dist/main.js"
     ports:
-      - "3000:3000"
+      - "3001:3000"
 
 volumes:
   pgdata:

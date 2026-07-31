@@ -330,6 +330,22 @@ model Comprobante {
   @@index([cedulaEmisor])
 }
 
+/// Contador atómico de consecutivo por emisor+sucursal+terminal+tipo (D9).
+/// Cuando el cliente no manda `consecutivo`, Factu asigna el siguiente valor
+/// aquí de forma atómica (evita colisiones con múltiples cajeros/sucursales
+/// emitiendo en paralelo bajo el mismo emisor).
+model ConsecutivoContador {
+  cedulaEmisor String
+  sucursal     Int
+  terminal     Int
+  /// Tipo de comprobante ("01".."05", ver TipoComprobante).
+  tipo         String
+  valor        Int      @default(0)
+  updatedAt    DateTime @updatedAt
+
+  @@id([cedulaEmisor, sucursal, terminal, tipo])
+}
+
 /// Auditoría: acciones de negocio atribuibles a un usuario o integración.
 model RegistroAuditoria {
   id          String   @id

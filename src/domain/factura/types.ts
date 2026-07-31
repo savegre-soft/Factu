@@ -94,11 +94,32 @@ export interface Descuento {
   naturaleza: string;
 }
 
+/**
+ * Exoneración de impuesto sobre UNA línea (reduce el monto de ESE impuesto en
+ * ESA línea, no el total del comprobante). Catálogo de `tipoDocumento` y orden
+ * exacto de campos según el esquema v4.4 — ⚠️ pendiente de validar contra el
+ * XSD oficial de Hacienda (mismo disclaimer que el resto de `facturaXml.ts`).
+ */
+export interface Exoneracion {
+  /** Tipo de documento de exoneración (catálogo de Hacienda). */
+  tipoDocumento: string;
+  numeroDocumento: string;
+  nombreInstitucion: string;
+  /** Obligatorio si `tipoDocumento` indica "Otros". */
+  nombreInstitucionOtros?: string;
+  fechaEmisionDocumento: Date;
+  /** Porcentaje exonerado, 1–100. */
+  porcentajeExoneracion: number;
+  /** Monto exonerado de este impuesto en esta línea. */
+  montoExoneracion: number;
+}
+
 export interface Impuesto {
   codigo: CodigoImpuesto;
   codigoTarifa: CodigoTarifa;
   /** Porcentaje, ej. 13 para 13%. */
   tarifa: number;
+  exoneracion?: Exoneracion;
 }
 
 export interface LineaDetalle {

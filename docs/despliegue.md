@@ -8,9 +8,9 @@ Levanta la API + PostgreSQL con un comando:
 docker compose up --build
 ```
 
-- API: `http://localhost:3000`
-- Documentación: `http://localhost:3000/docs`
-- Base PostgreSQL en el puerto `5432` (datos persistidos en el volumen `pgdata`).
+- API: `http://localhost:3001`
+- Documentación: `http://localhost:3001/docs`
+- Base PostgreSQL en el puerto `5434` del host (datos persistidos en el volumen `pgdata`; puerto interno del contenedor sigue siendo `5432` — `5434` en el host es deliberadamente distinto de `5432` para no chocar con otros proyectos que también usan el puerto Postgres estándar, ej. RestauCloud-API en la misma máquina de desarrollo).
 
 El servicio `app` ejecuta `prisma db push` al arrancar para crear/actualizar las
 tablas, y luego inicia el servidor.

@@ -22,7 +22,7 @@ import {
 import type { FacturaInput } from "../../domain/factura/types.js";
 
 /** Mapea el tipo de documento al código de tipo usado en el consecutivo/clave. */
-const TIPO_CONSECUTIVO: Record<TipoDocumento, TipoComprobante> = {
+export const TIPO_CONSECUTIVO: Record<TipoDocumento, TipoComprobante> = {
   [TipoDocumento.FacturaElectronica]: TipoComprobante.FacturaElectronica,
   [TipoDocumento.TiqueteElectronico]: TipoComprobante.TiqueteElectronico,
   [TipoDocumento.NotaCredito]: TipoComprobante.NotaCredito,

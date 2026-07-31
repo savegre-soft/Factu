@@ -61,6 +61,70 @@ describe("calcularLinea", () => {
     expect(linea.montoTotalLinea).toBe(1017);
   });
 
+  it("resta la exoneración del monto del impuesto (parcial)", () => {
+    const linea = calcularLinea(
+      {
+        codigoCabys: "8399000000000",
+        cantidad: 1,
+        unidadMedida: "Unid",
+        detalle: "Exonerado parcial",
+        precioUnitario: 1000,
+        impuestos: [
+          {
+            codigo: CodigoImpuesto.IVA,
+            codigoTarifa: "08",
+            tarifa: 13,
+            exoneracion: {
+              tipoDocumento: "01",
+              numeroDocumento: "DGT-123",
+              nombreInstitucion: "Ministerio de Hacienda",
+              fechaEmisionDocumento: new Date("2026-01-01"),
+              porcentajeExoneracion: 50,
+              montoExoneracion: 65, // 50% de los 130 de IVA bruto
+            },
+          },
+        ],
+      },
+      1,
+    );
+
+    expect(linea.impuestos[0]!.monto).toBe(65); // 130 bruto - 65 exonerado
+    expect(linea.impuestoNeto).toBe(65);
+    expect(linea.montoTotalLinea).toBe(1065);
+  });
+
+  it("no deja el monto de impuesto en negativo si la exoneración supera el bruto", () => {
+    const linea = calcularLinea(
+      {
+        codigoCabys: "8399000000000",
+        cantidad: 1,
+        unidadMedida: "Unid",
+        detalle: "Exonerado total",
+        precioUnitario: 1000,
+        impuestos: [
+          {
+            codigo: CodigoImpuesto.IVA,
+            codigoTarifa: "08",
+            tarifa: 13,
+            exoneracion: {
+              tipoDocumento: "01",
+              numeroDocumento: "DGT-123",
+              nombreInstitucion: "Ministerio de Hacienda",
+              fechaEmisionDocumento: new Date("2026-01-01"),
+              porcentajeExoneracion: 100,
+              montoExoneracion: 130,
+            },
+          },
+        ],
+      },
+      1,
+    );
+
+    expect(linea.impuestos[0]!.monto).toBe(0);
+    expect(linea.impuestoNeto).toBe(0);
+    expect(linea.montoTotalLinea).toBe(1000);
+  });
+
   it("marca como no gravada una línea sin impuestos", () => {
     const linea = calcularLinea(
       {

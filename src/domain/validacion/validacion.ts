@@ -17,6 +17,7 @@ import {
   type InformacionReferencia,
 } from "../factura/types.js";
 import { TipoDocumento } from "../factura/facturaXml.js";
+import { redondear } from "../factura/totales.js";
 
 export interface ErrorValidacion {
   campo: string;
@@ -114,6 +115,33 @@ function validarLinea(errores: ErrorValidacion[], linea: LineaDetalle, i: number
     }
     if (!imp.codigoTarifa?.trim()) {
       errores.push({ campo: `${p}.impuestos[${j}].codigoTarifa`, mensaje: "Obligatorio" });
+    }
+    if (imp.exoneracion) {
+      const ep = `${p}.impuestos[${j}].exoneracion`;
+      const ex = imp.exoneracion;
+      if (!ex.numeroDocumento?.trim()) {
+        errores.push({ campo: `${ep}.numeroDocumento`, mensaje: "Obligatorio" });
+      }
+      if (!ex.nombreInstitucion?.trim()) {
+        errores.push({ campo: `${ep}.nombreInstitucion`, mensaje: "Obligatorio" });
+      }
+      if (!ex.fechaEmisionDocumento) {
+        errores.push({ campo: `${ep}.fechaEmisionDocumento`, mensaje: "Obligatorio" });
+      }
+      if (!(ex.porcentajeExoneracion >= 1 && ex.porcentajeExoneracion <= 100)) {
+        errores.push({ campo: `${ep}.porcentajeExoneracion`, mensaje: "Debe estar entre 1 y 100" });
+      }
+      const montoImpuestoSinExonerar = redondear(
+        (linea.cantidad * linea.precioUnitario -
+          (linea.descuentos ?? []).reduce((a, d) => a + d.monto, 0)) *
+          (imp.tarifa / 100),
+      );
+      if (ex.montoExoneracion < 0 || ex.montoExoneracion > montoImpuestoSinExonerar) {
+        errores.push({
+          campo: `${ep}.montoExoneracion`,
+          mensaje: "No puede ser negativo ni superar el monto del impuesto sin exonerar",
+        });
+      }
     }
   }
 }

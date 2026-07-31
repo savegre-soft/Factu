@@ -93,7 +93,7 @@ Ver el detalle fila por fila en [REQUIREMENTS.md](./REQUIREMENTS.md).
 # Local, sin base de datos (persistencia en memoria)
 npm install
 cp .env.example .env
-npm run dev                 # http://localhost:3000 · docs en /docs
+npm run dev                 # http://localhost:3001 · docs en /docs
 
 # Con Docker (API + PostgreSQL)
 docker compose up --build

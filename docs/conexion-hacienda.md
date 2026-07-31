@@ -42,7 +42,7 @@ roles y permisos.
 
 ```bash
 # Crear organización + usuario admin (devuelve el token)
-curl -X POST http://localhost:3000/auth/registro \
+curl -X POST http://localhost:3001/auth/registro \
   -H "Content-Type: application/json" \
   -d '{ "tenantNombre": "Mi Empresa", "email": "admin@miempresa.cr", "nombre": "Admin", "password": "unaClaveSegura" }'
 # → { "token": "eyJ...", "usuario": { ... } }
@@ -71,7 +71,7 @@ export TOKEN="eyJ..."   # usa el token en las siguientes llamadas
 ### Paso 1 — Registrar el emisor  *(rol admin)*
 
 ```bash
-curl -X POST http://localhost:3000/emisor \
+curl -X POST http://localhost:3001/emisor \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{ "cedula": "3101123456", "nombre": "Empresa X S.A." }'
 ```
@@ -86,7 +86,7 @@ Factu valida el `.p12` y el PIN al recibirlo.
 #   Linux/macOS:  base64 -w0 certificado.p12
 #   PowerShell:   [Convert]::ToBase64String([IO.File]::ReadAllBytes("certificado.p12"))
 
-curl -X POST http://localhost:3000/emisor/3101123456/certificado \
+curl -X POST http://localhost:3001/emisor/3101123456/certificado \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{ "p12Base64": "<...base64...>", "password": "<PIN del .p12>" }'
 ```
@@ -100,7 +100,7 @@ curl -X POST http://localhost:3000/emisor/3101123456/certificado \
 Guarda los tokens de Hacienda bajo la cédula del emisor. Factu los **renueva automáticamente**.
 
 ```bash
-curl -X POST http://localhost:3000/hacienda/login \
+curl -X POST http://localhost:3001/hacienda/login \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{ "emisor": "3101123456", "username": "<usuario Hacienda>", "password": "<clave Hacienda>" }'
 ```
@@ -110,7 +110,7 @@ curl -X POST http://localhost:3000/hacienda/login \
 El tipo va en la ruta: `factura`, `tiquete`, `nota-credito` o `nota-debito`.
 
 ```bash
-curl -X POST http://localhost:3000/comprobante/factura/enviar \
+curl -X POST http://localhost:3001/comprobante/factura/enviar \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{
     "cedulaEmisor": "3101123456",
@@ -164,7 +164,7 @@ La emisión ya espera el estado final, pero puedes reconsultar el comprobante
 persistido:
 
 ```bash
-curl http://localhost:3000/comprobante/<clave>
+curl http://localhost:3001/comprobante/<clave>
 ```
 
 ## Validación previa
@@ -179,7 +179,7 @@ responde `400` con la lista de `errores` **sin** contactar a Hacienda.
 Para **aceptar o rechazar** un comprobante que recibiste, genera su XML:
 
 ```bash
-curl -X POST http://localhost:3000/mensaje-receptor/xml \
+curl -X POST http://localhost:3001/mensaje-receptor/xml \
   -H "Content-Type: application/json" \
   -d '{ "clave": "<clave de 50 díg.>", "numeroCedulaEmisor": "3101123456",
     "fechaEmisionDoc": "2026-07-16T12:00:00-06:00", "mensaje": "1", "totalFactura": 1130,

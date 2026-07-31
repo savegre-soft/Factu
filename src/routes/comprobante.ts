@@ -5,7 +5,12 @@ import { receptionClient, emitirComprobante } from "../services/hacienda/index.j
 import { firmar } from "../services/firma/index.js";
 import { generarP12Autofirmado, type Certificado } from "../services/firma/certificado.js";
 import { certStore } from "../services/emisor/index.js";
-import { comprobanteRepository, emisorRepository, clienteRepository } from "../infra/repos/index.js";
+import {
+  comprobanteRepository,
+  emisorRepository,
+  clienteRepository,
+  consecutivoRepository,
+} from "../infra/repos/index.js";
 import { randomUUID } from "node:crypto";
 import { documentosRecibidosService } from "../services/documentosRecibidos/index.js";
 import { entregaService } from "../services/entrega/index.js";
@@ -24,7 +29,7 @@ import {
 import { z } from "zod";
 import { Permiso } from "../domain/auth/roles.js";
 import { emisorDelTenant } from "./_guards.js";
-import type { DatosFactura } from "../services/hacienda/emision.js";
+import { TIPO_CONSECUTIVO, type DatosFactura } from "../services/hacienda/emision.js";
 
 /** Mapea el segmento de la ruta al tipo de documento. */
 const RUTA_A_TIPO: Record<string, TipoDocumento> = {
@@ -62,10 +67,31 @@ export async function comprobanteRoutes(app: FastifyInstance): Promise<void> {
     if (!parsed.success) {
       return reply.status(400).send({ error: "Entrada inválida", detalles: parsed.error.issues });
     }
-    const datos = parsed.data as DatosFactura;
+    const body = parsed.data;
 
     // El emisor debe estar registrado y pertenecer al tenant del usuario.
-    if (!(await emisorDelTenant(request, reply, datos.cedulaEmisor))) return;
+    if (!(await emisorDelTenant(request, reply, body.cedulaEmisor))) return;
+
+    // D9: consecutivo atómico server-side. Si el cliente lo omite (el camino
+    // recomendado), se asigna aquí; si lo manda explícito (compatibilidad
+    // hacia atrás), se respeta y solo se avanza el contador interno para que
+    // nunca vuelva a asignar un valor ≤ ese — best-effort, nunca bloquea la
+    // emisión si falla.
+    let consecutivoResuelto: number;
+    if (body.consecutivo !== undefined) {
+      consecutivoResuelto = body.consecutivo;
+      void consecutivoRepository
+        .registrarSiUsado(body.cedulaEmisor, body.sucursal, body.terminal, TIPO_CONSECUTIVO[tipo], body.consecutivo)
+        .catch((err) => request.log.warn({ err }, "No se pudo registrar el consecutivo explícito"));
+    } else {
+      consecutivoResuelto = await consecutivoRepository.siguiente(
+        body.cedulaEmisor,
+        body.sucursal,
+        body.terminal,
+        TIPO_CONSECUTIVO[tipo],
+      );
+    }
+    const datos: DatosFactura = { ...body, consecutivo: consecutivoResuelto };
 
     // Validación de reglas de negocio antes de firmar/enviar (falla temprano).
     const errores = validarComprobante(tipo, datos);

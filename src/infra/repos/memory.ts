@@ -36,6 +36,7 @@ import type {
   CertificadoSellado,
   ComprobanteRecord,
   ComprobanteRepository,
+  ConsecutivoRepository,
   DocumentoRecibidoRecord,
   DocumentoRecibidoRepository,
   EmisorRecord,
@@ -779,5 +780,38 @@ export class ComprobanteRepositoryMemoria implements ComprobanteRepository {
 
   async listarPorEmisor(cedula: string): Promise<ComprobanteRecord[]> {
     return [...this.comprobantes.values()].filter((c) => c.cedulaEmisor === cedula);
+  }
+}
+
+export class ConsecutivoRepositoryMemoria implements ConsecutivoRepository {
+  private readonly contadores = new Map<string, number>();
+
+  private llave(cedulaEmisor: string, sucursal: number, terminal: number, tipo: string): string {
+    return `${cedulaEmisor}|${sucursal}|${terminal}|${tipo}`;
+  }
+
+  async siguiente(
+    cedulaEmisor: string,
+    sucursal: number,
+    terminal: number,
+    tipo: string,
+  ): Promise<number> {
+    const llave = this.llave(cedulaEmisor, sucursal, terminal, tipo);
+    // Sin `await` entre lectura y escritura: atómico de hecho en un solo hilo.
+    const siguiente = (this.contadores.get(llave) ?? 0) + 1;
+    this.contadores.set(llave, siguiente);
+    return siguiente;
+  }
+
+  async registrarSiUsado(
+    cedulaEmisor: string,
+    sucursal: number,
+    terminal: number,
+    tipo: string,
+    valor: number,
+  ): Promise<void> {
+    const llave = this.llave(cedulaEmisor, sucursal, terminal, tipo);
+    const actual = this.contadores.get(llave) ?? 0;
+    if (valor > actual) this.contadores.set(llave, valor);
   }
 }

@@ -43,6 +43,7 @@ import type {
   CertificadoSellado,
   ComprobanteRecord,
   ComprobanteRepository,
+  ConsecutivoRepository,
   DocumentoRecibidoRecord,
   DocumentoRecibidoRepository,
   EmisorRecord,
@@ -907,6 +908,43 @@ export class ComprobanteRepositoryPrisma implements ComprobanteRepository {
   async listarPorEmisor(cedula: string): Promise<ComprobanteRecord[]> {
     const rows = await this.db.comprobante.findMany({ where: { cedulaEmisor: cedula } });
     return rows.map(aComprobanteRecord);
+  }
+}
+
+export class ConsecutivoRepositoryPrisma implements ConsecutivoRepository {
+  constructor(private readonly db: PrismaClient) {}
+
+  async siguiente(
+    cedulaEmisor: string,
+    sucursal: number,
+    terminal: number,
+    tipo: string,
+  ): Promise<number> {
+    // Upsert con increment: atómico a nivel de fila bajo concurrencia real
+    // (ON CONFLICT DO UPDATE de Postgres, sin condición de carrera).
+    const row = await this.db.consecutivoContador.upsert({
+      where: { cedulaEmisor_sucursal_terminal_tipo: { cedulaEmisor, sucursal, terminal, tipo } },
+      create: { cedulaEmisor, sucursal, terminal, tipo, valor: 1 },
+      update: { valor: { increment: 1 } },
+    });
+    return row.valor;
+  }
+
+  async registrarSiUsado(
+    cedulaEmisor: string,
+    sucursal: number,
+    terminal: number,
+    tipo: string,
+    valor: number,
+  ): Promise<void> {
+    const where = { cedulaEmisor_sucursal_terminal_tipo: { cedulaEmisor, sucursal, terminal, tipo } };
+    const actual = await this.db.consecutivoContador.findUnique({ where });
+    if (actual && actual.valor >= valor) return;
+    await this.db.consecutivoContador.upsert({
+      where,
+      create: { cedulaEmisor, sucursal, terminal, tipo, valor },
+      update: { valor },
+    });
   }
 }
 

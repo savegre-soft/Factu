@@ -13,7 +13,7 @@
  *   TotalVentaNeta      = TotalVenta - TotalDescuentos
  *   TotalComprobante    = TotalVentaNeta + TotalImpuesto + TotalOtrosCargos
  */
-import type { FacturaInput, LineaDetalle } from "./types.js";
+import type { Exoneracion, FacturaInput, LineaDetalle } from "./types.js";
 
 /** Decimales usados para montos (Hacienda admite hasta 5). */
 const DECIMALES = 5;
@@ -27,7 +27,10 @@ export interface ImpuestoCalculado {
   codigo: string;
   codigoTarifa: string;
   tarifa: number;
+  /** Monto NETO de exoneración (ya restado, nunca negativo). */
   monto: number;
+  /** Presente solo si la línea traía exoneración para este impuesto. */
+  exoneracion?: Exoneracion;
 }
 
 export interface LineaCalculada {
@@ -76,12 +79,17 @@ export function calcularLinea(linea: LineaDetalle, numeroLinea: number): LineaCa
   );
   const subTotal = redondear(montoTotal - montoDescuento);
 
-  const impuestos: ImpuestoCalculado[] = (linea.impuestos ?? []).map((imp) => ({
-    codigo: imp.codigo,
-    codigoTarifa: imp.codigoTarifa,
-    tarifa: imp.tarifa,
-    monto: redondear(subTotal * (imp.tarifa / 100)),
-  }));
+  const impuestos: ImpuestoCalculado[] = (linea.impuestos ?? []).map((imp) => {
+    const montoBruto = redondear(subTotal * (imp.tarifa / 100));
+    const montoExonerado = imp.exoneracion?.montoExoneracion ?? 0;
+    return {
+      codigo: imp.codigo,
+      codigoTarifa: imp.codigoTarifa,
+      tarifa: imp.tarifa,
+      monto: redondear(Math.max(0, montoBruto - montoExonerado)),
+      exoneracion: imp.exoneracion,
+    };
+  });
 
   const impuestoNeto = redondear(impuestos.reduce((acc, i) => acc + i.monto, 0));
   const montoTotalLinea = redondear(subTotal + impuestoNeto);

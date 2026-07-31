@@ -10,7 +10,7 @@ import {
   clienteBuscarSchema,
 } from "../plugins/schemas.js";
 import { Permiso } from "../domain/auth/roles.js";
-import { emisorDelTenant } from "./_guards.js";
+import { emisorDelTenant, puedeGestionarEmisor } from "./_guards.js";
 
 const datosFiscalesSchema = z
   .object({
@@ -59,14 +59,24 @@ export async function emisorRoutes(app: FastifyInstance): Promise<void> {
     },
   );
 
-  /** Registra (o actualiza) un emisor dentro del tenant del usuario. */
+  /**
+   * Registra (o actualiza) un emisor dentro del tenant del usuario. Admin
+   * humano, o API key de servicio ya scoped a esa cédula (ver
+   * `puedeGestionarEmisor` en `_guards.ts`) — solo `app.authenticate` aquí
+   * porque la cédula (necesaria para decidir) viene en el body, no la ruta.
+   */
   app.post(
     "/emisor",
-    { schema: emisorRegistrarSchema, preHandler: app.requierePermiso(Permiso.GestionarEmisores) },
+    { schema: emisorRegistrarSchema, preHandler: app.authenticate },
     async (request, reply) => {
       const parsed = registrarSchema.safeParse(request.body);
       if (!parsed.success) {
         return reply.status(400).send({ error: "Entrada inválida", detalles: parsed.error.issues });
+      }
+      if (!puedeGestionarEmisor(request, parsed.data.cedula)) {
+        return reply.status(403).send({
+          error: `Tu credencial no tiene permiso para gestionar el emisor "${parsed.data.cedula}"`,
+        });
       }
 
       // Si el emisor ya existe, debe pertenecer a este tenant.
@@ -88,15 +98,24 @@ export async function emisorRoutes(app: FastifyInstance): Promise<void> {
     },
   );
 
-  /** Sube el certificado .p12 del emisor (se guarda cifrado en reposo). */
+  /**
+   * Sube el certificado .p12 del emisor (se guarda cifrado en reposo). Admin
+   * humano, o API key de servicio ya scoped a esa cédula (`puedeGestionarEmisor`)
+   * — `emisorDelTenant` abajo ya revalida tenant + scope contra el registro real.
+   */
   app.post(
     "/emisor/:cedula/certificado",
-    { schema: emisorCertificadoSchema, preHandler: app.requierePermiso(Permiso.GestionarEmisores) },
+    { schema: emisorCertificadoSchema, preHandler: app.authenticate },
     async (request, reply) => {
       const cedula = (request.params as { cedula: string }).cedula;
       const parsed = certificadoSchema.safeParse(request.body);
       if (!parsed.success) {
         return reply.status(400).send({ error: "Entrada inválida", detalles: parsed.error.issues });
+      }
+      if (!puedeGestionarEmisor(request, cedula)) {
+        return reply.status(403).send({
+          error: `Tu credencial no tiene permiso para gestionar el emisor "${cedula}"`,
+        });
       }
 
       if (!(await emisorDelTenant(request, reply, cedula))) return;

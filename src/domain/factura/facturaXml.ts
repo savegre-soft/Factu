@@ -10,6 +10,7 @@
 import { create } from "xmlbuilder2";
 import type {
   Emisor,
+  Exoneracion,
   FacturaInput,
   InformacionReferencia,
   MedioPago,
@@ -126,6 +127,22 @@ function addReceptor(root: XmlNode, receptor: Receptor): void {
     node.ele("CorreoElectronico").txt(receptor.correoElectronico);
 }
 
+/**
+ * Nodo `Exoneracion` dentro de un `Impuesto` — reduce el monto de ESE impuesto
+ * en ESA línea. ⚠️ Estructura/orden pendientes de validar contra el XSD oficial
+ * v4.4 (ver el disclaimer al inicio de este archivo).
+ */
+function addExoneracion(parent: XmlNode, ex: Exoneracion): void {
+  const node = parent.ele("Exoneracion");
+  node.ele("TipoDocumento").txt(ex.tipoDocumento);
+  if (ex.nombreInstitucionOtros) node.ele("NombreInstitucionOtros").txt(ex.nombreInstitucionOtros);
+  node.ele("NombreInstitucion").txt(ex.nombreInstitucion);
+  node.ele("NumeroDocumento").txt(ex.numeroDocumento);
+  node.ele("FechaEmision").txt(fechaEmisionISO(ex.fechaEmisionDocumento));
+  node.ele("PorcentajeExoneracion").txt(String(ex.porcentajeExoneracion));
+  node.ele("MontoExoneracion").txt(money(ex.montoExoneracion));
+}
+
 function addLinea(
   parent: XmlNode,
   input: FacturaInput["lineas"][number],
@@ -155,6 +172,7 @@ function addLinea(
       i.ele("Codigo").txt(imp.codigo);
       i.ele("CodigoTarifaIVA").txt(imp.codigoTarifa);
       i.ele("Tarifa").txt(imp.tarifa.toFixed(2));
+      if (imp.exoneracion) addExoneracion(i, imp.exoneracion);
       i.ele("Monto").txt(money(imp.monto));
     }
     node.ele("ImpuestoNeto").txt(money(calc.impuestoNeto));

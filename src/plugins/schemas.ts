@@ -119,7 +119,14 @@ const datosComprobante = {
       },
     },
   },
-  required: ["cedulaEmisor", "consecutivo", "codigoActividadEmisor", "emisor", "lineas"],
+  // `consecutivo` es opcional desde D9 (2026-07-30): si se omite,
+  // `/comprobante/:tipo/enviar` lo asigna atómicamente server-side. Se había
+  // dejado como requerido aquí por error — este schema de Fastify es
+  // independiente del Zod de `datosFacturaSchema` (routes/factura.ts) y se
+  // valida ANTES que él, así que bloqueaba silenciosamente el camino sin
+  // consecutivo — hallazgo real durante la integración con un cliente externo
+  // (RestroCloud), que sí llama a esta ruta sin mandarlo.
+  required: ["cedulaEmisor", "codigoActividadEmisor", "emisor", "lineas"],
 } as const;
 
 // ---- Esquemas por ruta ----

@@ -109,6 +109,79 @@ describe("validarComprobante — líneas", () => {
   });
 });
 
+describe("validarComprobante — exoneración por línea", () => {
+  it("rechaza una exoneración incompleta (sin documento, institución ni fecha, porcentaje fuera de rango)", () => {
+    const d = valido();
+    d.lineas[0]!.impuestos = [
+      {
+        codigo: CodigoImpuesto.IVA,
+        codigoTarifa: "08",
+        tarifa: 13,
+        exoneracion: {
+          tipoDocumento: "01",
+          numeroDocumento: "",
+          nombreInstitucion: "",
+          fechaEmisionDocumento: undefined as unknown as Date,
+          porcentajeExoneracion: 0,
+          montoExoneracion: 0,
+        },
+      },
+    ];
+    const errs = validarComprobante(TipoDocumento.FacturaElectronica, d);
+    expect(campos(errs)).toEqual(
+      expect.arrayContaining([
+        "lineas[0].impuestos[0].exoneracion.numeroDocumento",
+        "lineas[0].impuestos[0].exoneracion.nombreInstitucion",
+        "lineas[0].impuestos[0].exoneracion.fechaEmisionDocumento",
+        "lineas[0].impuestos[0].exoneracion.porcentajeExoneracion",
+      ]),
+    );
+  });
+
+  it("rechaza un monto exonerado mayor al impuesto sin exonerar", () => {
+    const d = valido();
+    d.lineas[0]!.precioUnitario = 1000; // IVA bruto = 130
+    d.lineas[0]!.impuestos = [
+      {
+        codigo: CodigoImpuesto.IVA,
+        codigoTarifa: "08",
+        tarifa: 13,
+        exoneracion: {
+          tipoDocumento: "01",
+          numeroDocumento: "DGT-1",
+          nombreInstitucion: "Hacienda",
+          fechaEmisionDocumento: new Date("2026-01-01"),
+          porcentajeExoneracion: 100,
+          montoExoneracion: 500,
+        },
+      },
+    ];
+    const errs = validarComprobante(TipoDocumento.FacturaElectronica, d);
+    expect(campos(errs)).toContain("lineas[0].impuestos[0].exoneracion.montoExoneracion");
+  });
+
+  it("acepta una exoneración completa y consistente", () => {
+    const d = valido();
+    d.lineas[0]!.precioUnitario = 1000;
+    d.lineas[0]!.impuestos = [
+      {
+        codigo: CodigoImpuesto.IVA,
+        codigoTarifa: "08",
+        tarifa: 13,
+        exoneracion: {
+          tipoDocumento: "01",
+          numeroDocumento: "DGT-1",
+          nombreInstitucion: "Hacienda",
+          fechaEmisionDocumento: new Date("2026-01-01"),
+          porcentajeExoneracion: 100,
+          montoExoneracion: 130,
+        },
+      },
+    ];
+    expect(validarComprobante(TipoDocumento.FacturaElectronica, d)).toEqual([]);
+  });
+});
+
 describe("validarComprobante — condición de venta y moneda", () => {
   it("exige plazo de crédito cuando la venta es a crédito", () => {
     const d = valido();

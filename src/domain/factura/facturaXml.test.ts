@@ -92,6 +92,32 @@ describe("generarFacturaXml", () => {
     expect(resumen.MedioPago.TipoMedioPago).toBe("01");
   });
 
+  it("incluye el nodo Exoneracion y el Monto neto cuando la línea trae exoneración", () => {
+    const input = facturaBase();
+    input.lineas[0]!.impuestos = [
+      {
+        codigo: CodigoImpuesto.IVA,
+        codigoTarifa: "08",
+        tarifa: 13,
+        exoneracion: {
+          tipoDocumento: "01",
+          numeroDocumento: "DGT-456",
+          nombreInstitucion: "Ministerio de Hacienda",
+          fechaEmisionDocumento: new Date(Date.UTC(2026, 0, 1, 6, 0, 0)),
+          porcentajeExoneracion: 100,
+          montoExoneracion: 260, // 13% de 2000, el bruto de esta línea
+        },
+      },
+    ];
+    const fe = parse(generarFacturaXml(input)).FacturaElectronica;
+    const impuesto = fe.DetalleServicio.LineaDetalle.Impuesto;
+    expect(impuesto.Exoneracion).toBeDefined();
+    expect(impuesto.Exoneracion.NumeroDocumento).toBe("DGT-456");
+    expect(impuesto.Exoneracion.PorcentajeExoneracion).toBe("100");
+    expect(impuesto.Exoneracion.MontoExoneracion).toBe("260.00000");
+    expect(impuesto.Monto).toBe("0.00000");
+  });
+
   it("omite el receptor cuando no se proporciona (caso tiquete)", () => {
     const input = facturaBase();
     delete input.receptor;

@@ -2,10 +2,10 @@
 
 Documentación **interactiva**:
 
-- 📖 **Scalar (moderna):** `http://localhost:3000/docs`
-- 🧪 **Swagger UI (clásica):** `http://localhost:3000/swagger`
-- `{}` **Especificación OpenAPI:** `http://localhost:3000/swagger/json`
-- 🏠 **Página de inicio:** `http://localhost:3000/`
+- 📖 **Scalar (moderna):** `http://localhost:3001/docs`
+- 🧪 **Swagger UI (clásica):** `http://localhost:3001/swagger`
+- `{}` **Especificación OpenAPI:** `http://localhost:3001/swagger/json`
+- 🏠 **Página de inicio:** `http://localhost:3001/`
 
 ## Control de acceso
 
