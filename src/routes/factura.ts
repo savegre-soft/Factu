@@ -73,6 +73,8 @@ export const datosFacturaSchema = z.object({
    */
   consecutivo: z.number().int().nonnegative().optional(),
   // Datos de la factura (hito 3)
+  /** Cédula del proveedor de sistemas (v4.4, obligatorio). Si se omite, se usa la del emisor. */
+  proveedorSistemas: z.string().max(20).optional(),
   codigoActividadEmisor: z.string(),
   codigoActividadReceptor: z.string().optional(),
   emisor: z.object({

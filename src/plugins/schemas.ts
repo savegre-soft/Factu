@@ -568,6 +568,17 @@ export const comprobanteGetSchema = {
   },
 } as const;
 
+export const comprobantePdfSchema = {
+  tags: ["Comprobantes"],
+  summary: "Genera el PDF del comprobante a partir de su XML firmado (base64)",
+  security: bearer,
+  params: {
+    type: "object",
+    properties: { clave: { type: "string" } },
+    required: ["clave"],
+  },
+} as const;
+
 const borradorBody = {
   type: "object",
   properties: {

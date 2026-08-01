@@ -175,6 +175,10 @@ function addLinea(
       if (imp.exoneracion) addExoneracion(i, imp.exoneracion);
       i.ele("Monto").txt(money(imp.monto));
     }
+    // v4.4: obligatorio incluso sin regalías/bonificaciones/impuestos de fábrica
+    // (Anexo 2, campo "ImpuestoAsumidoEmisorFabrica") — "0" cuando no aplican,
+    // que es el único caso que este dominio modela hoy.
+    node.ele("ImpuestoAsumidoEmisorFabrica").txt(money(0));
     node.ele("ImpuestoNeto").txt(money(calc.impuestoNeto));
   }
 
@@ -262,6 +266,7 @@ export function generarComprobanteXml(
   });
 
   root.ele("Clave").txt(factura.clave);
+  root.ele("ProveedorSistemas").txt(factura.proveedorSistemas ?? factura.emisor.identificacion.numero);
   root.ele("CodigoActividadEmisor").txt(factura.codigoActividadEmisor);
   if (factura.codigoActividadReceptor)
     root.ele("CodigoActividadReceptor").txt(factura.codigoActividadReceptor);

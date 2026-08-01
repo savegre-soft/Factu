@@ -22,10 +22,12 @@ import { validarComprobante } from "../domain/validacion/validacion.js";
 import {
   comprobanteEnviarSchema,
   comprobanteGetSchema,
+  comprobantePdfSchema,
   comprobantesListarSchema,
   comprobanteReenviarSchema,
   comprobanteEnviosSchema,
 } from "../plugins/schemas.js";
+import { parsearParaPdf, generarFacturaPdf } from "../services/entrega/comprobantePdf.js";
 import { z } from "zod";
 import { Permiso } from "../domain/auth/roles.js";
 import { emisorDelTenant } from "./_guards.js";
@@ -271,6 +273,33 @@ export async function comprobanteRoutes(app: FastifyInstance): Promise<void> {
       updatedAt: record.updatedAt,
     };
   });
+
+  /**
+   * Genera el PDF del comprobante a partir de su XML firmado, en base64
+   * (mismo camino que usa el envío por correo, `entregaService` — cero
+   * lógica de PDF duplicada). No hay otra forma de *devolver* el PDF hoy,
+   * solo de enviarlo por correo vía `/reenviar`.
+   */
+  app.get(
+    "/comprobante/:clave/pdf",
+    { schema: comprobantePdfSchema, preHandler: app.requierePermiso(Permiso.Leer) },
+    async (request, reply) => {
+      const clave = (request.params as { clave: string }).clave;
+      const record = await comprobanteRepository.buscar(clave);
+      if (!record) return reply.status(404).send({ error: "Comprobante no encontrado" });
+      if (!(await emisorDelTenant(request, reply, record.cedulaEmisor))) return;
+      if (!record.xmlFirmado) {
+        return reply.status(400).send({ error: "El comprobante no tiene un XML firmado todavía" });
+      }
+      const datos = parsearParaPdf(record.xmlFirmado);
+      const pdf = await generarFacturaPdf(datos, record.estado);
+      return {
+        clave: record.clave,
+        filename: `${record.clave}.pdf`,
+        pdfBase64: pdf.toString("base64"),
+      };
+    },
+  );
 
   /** Reenvía el comprobante al cliente por correo (PDF + XML). */
   app.post(

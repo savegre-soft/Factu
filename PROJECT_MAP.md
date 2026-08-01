@@ -50,15 +50,17 @@ ruta.
 La entrega al cliente (`services/entrega/*`: `entregaService`, `comprobantePdf.ts`,
 `emailSender.ts`, `plantillaCorreo.ts`, `poller.ts`) se dispara desde `comprobante.ts`
 al emitir, y se expone en `/comprobante/:clave/reenviar` y `/comprobante/:clave/envios`.
-Usa el modelo `EnvioComprobante`.
+Usa el modelo `EnvioComprobante`. `GET /comprobante/:clave/pdf` (2026-07-31, fila F2)
+devuelve el PDF real en `pdfBase64` para descarga directa, sin pasar por correo —
+reusa `parsearParaPdf`/`generarFacturaPdf` de `comprobantePdf.ts` sin duplicar lógica.
 
 ## Dominio (`src/domain/`) — lógica pura, sin infraestructura
 
 | Módulo | Contenido |
 |---|---|
 | `clave/clave.ts` | Clave numérica (50 díg.) y consecutivo (20 díg.). |
-| `factura/types.ts` | Tipos de negocio: `Emisor`, `Receptor`, `LineaDetalle`, `Moneda`, `InformacionReferencia`, `Exoneracion` (por impuesto/línea, D10, 2026-07-30), enums `TipoIdentificacion`/`CondicionVenta`. |
-| `factura/facturaXml.ts` | Generador de XML v4.4 (`TipoDocumento`: factura, tiquete, NC, ND). |
+| `factura/types.ts` | Tipos de negocio: `Emisor`, `Receptor`, `LineaDetalle`, `Moneda`, `InformacionReferencia`, `Exoneracion` (por impuesto/línea, D10, 2026-07-30), enums `TipoIdentificacion`/`CondicionVenta`. `FacturaInput.proveedorSistemas?` (D11, 2026-07-31 — cédula del proveedor de sistemas, default a la del emisor). |
+| `factura/facturaXml.ts` | Generador de XML v4.4 (`TipoDocumento`: factura, tiquete, NC, ND). Incluye `ProveedorSistemas` (encabezado, entre `Clave` y `CodigoActividadEmisor`) e `ImpuestoAsumidoEmisorFabrica` (por línea, fijo "0") — D11, 2026-07-31, campos obligatorios de v4.4 encontrados por rechazo real de Hacienda. |
 | `factura/totales.ts` | Cálculo de totales/impuestos/descuentos. |
 | `mensajeReceptor/mensajeReceptor.ts` | XML de Mensaje Receptor (aceptar/rechazar/parcial). |
 | `documentoRecibido/parseComprobante.ts` | Parseo de un XML de comprobante recibido. |
