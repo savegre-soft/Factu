@@ -69,10 +69,29 @@ export async function comprobanteRoutes(app: FastifyInstance): Promise<void> {
     if (!parsed.success) {
       return reply.status(400).send({ error: "Entrada inválida", detalles: parsed.error.issues });
     }
-    const body = parsed.data;
+    const { referenciaExterna, ...body } = parsed.data;
 
     // El emisor debe estar registrado y pertenecer al tenant del usuario.
     if (!(await emisorDelTenant(request, reply, body.cedulaEmisor))) return;
+
+    // Idempotencia (reconciliación de RestroCloud): si ya existe un
+    // comprobante emitido con esta misma (cedulaEmisor, referenciaExterna),
+    // devolverlo tal cual — nunca consumir un consecutivo nuevo ni volver a
+    // llamar a Hacienda/reenviar por correo, eso ya ocurrió la primera vez.
+    if (referenciaExterna) {
+      const existente = await comprobanteRepository.buscarPorReferencia(body.cedulaEmisor, referenciaExterna);
+      if (existente) {
+        return {
+          tipo: tipoParam,
+          clave: existente.clave,
+          consecutivo: Number(existente.consecutivo),
+          estado: existente.estado,
+          respuestaXml: existente.respuestaXml,
+          certificadoDemo: false,
+          idempotente: true,
+        };
+      }
+    }
 
     // D9: consecutivo atómico server-side. Si el cliente lo omite (el camino
     // recomendado), se asigna aquí; si lo manda explícito (compatibilidad
@@ -133,6 +152,7 @@ export async function comprobanteRoutes(app: FastifyInstance): Promise<void> {
         estado: result.estado.estado,
         xmlFirmado: result.xmlFirmado,
         respuestaXml: result.estado.respuestaXml,
+        referenciaExterna,
       });
 
       // Guarda/actualiza el receptor como cliente para autocompletarlo luego.

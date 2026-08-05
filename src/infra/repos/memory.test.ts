@@ -53,6 +53,18 @@ describe("ComprobanteRepositoryMemoria", () => {
     expect(await repo.listarPorEmisor("3101")).toHaveLength(2);
     expect(await repo.listarPorEmisor("otro")).toHaveLength(1);
   });
+
+  it("busca por referencia externa, aislado por emisor (idempotencia)", async () => {
+    const repo = new ComprobanteRepositoryMemoria();
+    await repo.crear({ ...nuevo, referenciaExterna: "invoice-123" });
+    await repo.crear({ ...nuevo, clave: "6".repeat(50), cedulaEmisor: "otro", referenciaExterna: "invoice-123" });
+
+    const encontrado = await repo.buscarPorReferencia("3101", "invoice-123");
+    expect(encontrado?.clave).toBe(nuevo.clave);
+    // Misma referencia pero otro emisor no debe colisionar.
+    expect((await repo.buscarPorReferencia("otro", "invoice-123"))?.clave).toBe("6".repeat(50));
+    expect(await repo.buscarPorReferencia("3101", "no-existe")).toBeNull();
+  });
 });
 
 describe("ConsecutivoRepositoryMemoria", () => {

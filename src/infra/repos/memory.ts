@@ -778,6 +778,13 @@ export class ComprobanteRepositoryMemoria implements ComprobanteRepository {
     return this.comprobantes.get(clave) ?? null;
   }
 
+  async buscarPorReferencia(cedulaEmisor: string, referenciaExterna: string): Promise<ComprobanteRecord | null> {
+    for (const c of this.comprobantes.values()) {
+      if (c.cedulaEmisor === cedulaEmisor && c.referenciaExterna === referenciaExterna) return c;
+    }
+    return null;
+  }
+
   async listarPorEmisor(cedula: string): Promise<ComprobanteRecord[]> {
     return [...this.comprobantes.values()].filter((c) => c.cedulaEmisor === cedula);
   }

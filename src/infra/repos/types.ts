@@ -618,6 +618,7 @@ export interface ComprobanteRecord {
   estado: string;
   xmlFirmado?: string;
   respuestaXml?: string;
+  referenciaExterna?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -630,12 +631,15 @@ export interface NuevoComprobante {
   estado: string;
   xmlFirmado?: string;
   respuestaXml?: string;
+  referenciaExterna?: string;
 }
 
 export interface ComprobanteRepository {
   crear(rec: NuevoComprobante): Promise<ComprobanteRecord>;
   actualizarEstado(clave: string, estado: string, respuestaXml?: string): Promise<void>;
   buscar(clave: string): Promise<ComprobanteRecord | null>;
+  /** Idempotencia: comprobante ya emitido para este emisor+referencia externa, si existe. */
+  buscarPorReferencia(cedulaEmisor: string, referenciaExterna: string): Promise<ComprobanteRecord | null>;
   listarPorEmisor(cedula: string): Promise<ComprobanteRecord[]>;
 }
 

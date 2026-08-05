@@ -72,6 +72,14 @@ export const datosFacturaSchema = z.object({
    * explícito, ya que no tiene emisor real de donde resolverlo.
    */
   consecutivo: z.number().int().nonnegative().optional(),
+  /**
+   * Idempotencia (reconciliación de RestroCloud, RF-58): id opaco del
+   * sistema externo. Si `/comprobante/:tipo/enviar` ya emitió algo con esta
+   * misma (cedulaEmisor, referenciaExterna), devuelve ese comprobante en vez
+   * de crear uno nuevo — protege contra reintentos duplicando un documento
+   * fiscal real. Sin efecto en `/factura/xml` (no persiste nada).
+   */
+  referenciaExterna: z.string().max(150).optional(),
   // Datos de la factura (hito 3)
   /** Cédula del proveedor de sistemas (v4.4, obligatorio). Si se omite, se usa la del emisor. */
   proveedorSistemas: z.string().max(20).optional(),

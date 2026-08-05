@@ -888,6 +888,7 @@ export class ComprobanteRepositoryPrisma implements ComprobanteRepository {
         estado: rec.estado,
         xmlFirmado: rec.xmlFirmado ?? null,
         respuestaXml: rec.respuestaXml ?? null,
+        referenciaExterna: rec.referenciaExterna ?? null,
       },
     });
     return aComprobanteRecord(row);
@@ -902,6 +903,11 @@ export class ComprobanteRepositoryPrisma implements ComprobanteRepository {
 
   async buscar(clave: string): Promise<ComprobanteRecord | null> {
     const row = await this.db.comprobante.findUnique({ where: { clave } });
+    return row ? aComprobanteRecord(row) : null;
+  }
+
+  async buscarPorReferencia(cedulaEmisor: string, referenciaExterna: string): Promise<ComprobanteRecord | null> {
+    const row = await this.db.comprobante.findFirst({ where: { cedulaEmisor, referenciaExterna } });
     return row ? aComprobanteRecord(row) : null;
   }
 
@@ -956,6 +962,7 @@ type ComprobanteRow = {
   estado: string;
   xmlFirmado: string | null;
   respuestaXml: string | null;
+  referenciaExterna: string | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -972,5 +979,6 @@ function aComprobanteRecord(row: ComprobanteRow): ComprobanteRecord {
   };
   if (row.xmlFirmado) record.xmlFirmado = row.xmlFirmado;
   if (row.respuestaXml) record.respuestaXml = row.respuestaXml;
+  if (row.referenciaExterna) record.referenciaExterna = row.referenciaExterna;
   return record;
 }

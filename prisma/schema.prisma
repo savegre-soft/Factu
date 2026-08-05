@@ -324,10 +324,18 @@ model Comprobante {
   xmlFirmado   String?
   /// XML de respuesta de Hacienda.
   respuestaXml String?
+  /// Idempotencia: id opaco del sistema externo que pidió la emisión (ej. el
+  /// id de la factura en RestauCloud). Si `/comprobante/:tipo/enviar` recibe
+  /// el mismo par (cedulaEmisor, referenciaExterna) dos veces, la segunda
+  /// llamada devuelve este mismo comprobante en vez de crear uno nuevo — sin
+  /// esto, un reintento tras un fallo de red podría duplicar un documento
+  /// fiscal real ya aceptado por Hacienda.
+  referenciaExterna String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   @@index([cedulaEmisor])
+  @@unique([cedulaEmisor, referenciaExterna], name: "uniq_comprobante_referencia")
 }
 
 /// Contador atómico de consecutivo por emisor+sucursal+terminal+tipo (D9).
