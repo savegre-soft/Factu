@@ -23,6 +23,31 @@ export enum TipoComprobante {
   FacturaExportacion = "09",
 }
 
+/**
+ * Código de 2 dígitos que le corresponde a cada tipo de documento dentro del
+ * consecutivo. Se indexa por el código corto que usa el resto del sistema
+ * (FE/TE/NC/ND) para no acoplar este módulo al generador de XML.
+ */
+export const TIPO_POR_DOCUMENTO: Record<string, TipoComprobante> = {
+  FE: TipoComprobante.FacturaElectronica,
+  ND: TipoComprobante.NotaDebito,
+  NC: TipoComprobante.NotaCredito,
+  TE: TipoComprobante.TiqueteElectronico,
+};
+
+/**
+ * Los 10 primeros dígitos del consecutivo (sucursal + terminal + tipo), que
+ * identifican la serie a la que pertenece un número.
+ */
+export function prefijoConsecutivo(serie: {
+  sucursal: number;
+  terminal: number;
+  tipo: string;
+}): string {
+  const tipo = TIPO_POR_DOCUMENTO[serie.tipo] ?? serie.tipo;
+  return `${pad(serie.sucursal, 3)}${pad(serie.terminal, 5)}${tipo}`;
+}
+
 /** Situación del comprobante (1 dígito de la clave). */
 export enum SituacionComprobante {
   Normal = "1",
@@ -86,11 +111,19 @@ export function generarCodigoSeguridad(): string {
   return s;
 }
 
-/** Formatea una fecha como ddmmaa (día, mes, año de 2 dígitos). */
+/**
+ * Formatea una fecha como ddmmaa (día, mes, año de 2 dígitos) en hora de Costa
+ * Rica (UTC-6 fijo, el país no aplica horario de verano).
+ *
+ * Se calcula igual que el `FechaEmision` del XML: con la hora local del proceso
+ * (UTC en el contenedor) toda emisión posterior a las 18:00 CR llevaría en la
+ * clave el día siguiente al del comprobante, y Hacienda las vería incoherentes.
+ */
 function fechaDDMMAA(fecha: Date): string {
-  const dd = pad(fecha.getDate(), 2);
-  const mm = pad(fecha.getMonth() + 1, 2);
-  const aa = pad(fecha.getFullYear() % 100, 2);
+  const cr = new Date(fecha.getTime() - 6 * 60 * 60 * 1000);
+  const dd = pad(cr.getUTCDate(), 2);
+  const mm = pad(cr.getUTCMonth() + 1, 2);
+  const aa = pad(cr.getUTCFullYear() % 100, 2);
   return `${dd}${mm}${aa}`;
 }
 

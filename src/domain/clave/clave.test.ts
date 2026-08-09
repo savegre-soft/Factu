@@ -36,7 +36,8 @@ describe("generarClave", () => {
   it("produce una clave determinista de 50 dígitos", () => {
     const { clave, consecutivo, codigoSeguridad } = generarClave({
       cedulaEmisor: "3101123456",
-      fecha: new Date(2026, 6, 16), // 16/07/2026 -> 160726
+      // Mediodía en Costa Rica: el día es el mismo en cualquier zona del proceso.
+      fecha: new Date("2026-07-16T12:00:00-06:00"), // 16/07/2026 -> 160726
       sucursal: 1,
       terminal: 1,
       tipo: TipoComprobante.FacturaElectronica,
@@ -53,6 +54,20 @@ describe("generarClave", () => {
     expect(clave).toHaveLength(50);
     expect(consecutivo).toBe("00100001010000000001");
     expect(codigoSeguridad).toBe("12345678");
+  });
+
+  it("usa la fecha de Costa Rica, no la del proceso", () => {
+    // 23:30 del 9 de agosto en CR = 05:30 del 10 en UTC. La clave debe decir 09.
+    const { clave } = generarClave({
+      cedulaEmisor: "3101123456",
+      fecha: new Date("2026-08-09T23:30:00-06:00"),
+      sucursal: 1,
+      terminal: 1,
+      tipo: TipoComprobante.FacturaElectronica,
+      consecutivo: 1,
+      codigoSeguridad: "12345678",
+    });
+    expect(clave.slice(3, 9)).toBe("090826");
   });
 
   it("genera código de seguridad aleatorio si no se pasa", () => {

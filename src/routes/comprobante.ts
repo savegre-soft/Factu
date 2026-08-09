@@ -63,7 +63,8 @@ export async function comprobanteRoutes(app: FastifyInstance): Promise<void> {
     if (!parsed.success) {
       return reply.status(400).send({ error: "Entrada inválida", detalles: parsed.error.issues });
     }
-    const datos = parsed.data as DatosFactura;
+    // El consecutivo es opcional en la entrada: lo resuelve la API más abajo.
+    const datos = parsed.data as Omit<DatosFactura, "consecutivo"> & { consecutivo?: number };
     // ProveedorSistemas (v4.4): usa el configurado en la plataforma; si no hay,
     // el generador cae en la cédula del propio emisor.
     if (!datos.proveedorSistemas) datos.proveedorSistemas = env.PROVEEDOR_SISTEMAS;
@@ -76,6 +77,18 @@ export async function comprobanteRoutes(app: FastifyInstance): Promise<void> {
     if (errores.length > 0) {
       return reply.status(400).send({ error: "Comprobante inválido", errores });
     }
+
+    // El consecutivo lo lleva la API, no el cliente: si el navegador lo
+    // manejara, una recarga o una segunda pestaña repetirían el número y
+    // Hacienda rechazaría el comprobante. Se acepta uno explícito como override.
+    const serie = {
+      cedulaEmisor: datos.cedulaEmisor,
+      sucursal: datos.sucursal ?? 1,
+      terminal: datos.terminal ?? 1,
+      tipo,
+    };
+    const consecutivoAsignado =
+      datos.consecutivo ?? (await comprobanteRepository.reservarConsecutivo(serie));
 
     // Usa el certificado real del emisor si está cargado; si no, cae a uno
     // autofirmado de PRUEBA (marcado en la respuesta).
@@ -92,24 +105,46 @@ export async function comprobanteRoutes(app: FastifyInstance): Promise<void> {
       certificadoDemo = true;
     }
 
+    // Emisión ante Hacienda. Todo lo que va DESPUÉS de este bloque ocurre con el
+    // comprobante ya emitido: ningún fallo posterior puede reportarse como
+    // "fallo al emitir", o el usuario reintentaría y duplicaría el documento.
+    let result;
     try {
-      const result = await emitirComprobante(tipo, datos, {
+      result = await emitirComprobante(tipo, { ...datos, consecutivo: consecutivoAsignado }, {
         obtenerToken: () => tokenStore.getAccessToken(datos.cedulaEmisor),
         firmar,
         cliente: receptionClient,
         certificado,
       });
-
-      // Persiste el comprobante con su estado final.
-      await comprobanteRepository.crear({
-        clave: result.clave,
-        cedulaEmisor: datos.cedulaEmisor,
-        tipo,
-        consecutivo: result.consecutivo,
-        estado: result.estado.estado,
-        xmlFirmado: result.xmlFirmado,
-        respuestaXml: result.estado.respuestaXml,
+    } catch (err) {
+      request.log.error(err);
+      return reply.status(502).send({
+        error: "Fallo al emitir el comprobante",
+        detalle: (err as Error).message,
       });
+    }
+
+    {
+      // Persiste el comprobante con su estado final. Si la base falla, el
+      // comprobante YA existe ante Hacienda: se avisa, pero no se da por fallido.
+      let persistido = true;
+      try {
+        await comprobanteRepository.crear({
+          clave: result.clave,
+          cedulaEmisor: datos.cedulaEmisor,
+          tipo,
+          consecutivo: result.consecutivo,
+          estado: result.estado.estado,
+          xmlFirmado: result.xmlFirmado,
+          respuestaXml: result.estado.respuestaXml,
+        });
+      } catch (err) {
+        persistido = false;
+        request.log.error(
+          { err, clave: result.clave },
+          "Comprobante emitido en Hacienda pero NO persistido",
+        );
+      }
 
       // Guarda/actualiza el receptor como cliente para autocompletarlo luego.
       if (datos.receptor?.identificacion?.numero) {
@@ -191,15 +226,46 @@ export async function comprobanteRoutes(app: FastifyInstance): Promise<void> {
         estado: result.estado.estado,
         respuestaXml: result.estado.respuestaXml,
         certificadoDemo,
+        ...(persistido
+          ? {}
+          : {
+              advertencia:
+                "El comprobante se emitió en Hacienda pero no se pudo guardar en la base. NO lo reenvíes: anota la clave.",
+            }),
       };
-    } catch (err) {
-      request.log.error(err);
-      return reply.status(502).send({
-        error: "Fallo al emitir el comprobante",
-        detalle: (err as Error).message,
-      });
     }
   });
+
+  /**
+   * Próximo consecutivo de una serie, sin consumirlo. Lo usa el formulario de
+   * emisión para mostrar el número que se va a asignar.
+   */
+  app.get(
+    "/comprobante/proximo-consecutivo",
+    { preHandler: app.requierePermiso(Permiso.Emitir) },
+    async (request, reply) => {
+      const q = z
+        .object({
+          cedulaEmisor: z.string().min(1),
+          sucursal: z.coerce.number().int().nonnegative().default(1),
+          terminal: z.coerce.number().int().nonnegative().default(1),
+          tipo: z.enum(["factura", "tiquete", "nota-credito", "nota-debito"]).default("factura"),
+        })
+        .safeParse(request.query);
+      if (!q.success) {
+        return reply.status(400).send({ error: "Entrada inválida", detalles: q.error.issues });
+      }
+      if (!(await emisorDelTenant(request, reply, q.data.cedulaEmisor))) return;
+
+      const consecutivo = await comprobanteRepository.proximoConsecutivo({
+        cedulaEmisor: q.data.cedulaEmisor,
+        sucursal: q.data.sucursal,
+        terminal: q.data.terminal,
+        tipo: RUTA_A_TIPO[q.data.tipo]!,
+      });
+      return { consecutivo };
+    },
+  );
 
   /** Lista los comprobantes emitidos del tenant (todos sus emisores). */
   app.get(

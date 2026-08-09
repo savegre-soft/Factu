@@ -18,7 +18,13 @@ import type {
   Ubicacion,
 } from "./types.js";
 import { calcularTotales, type LineaCalculada } from "./totales.js";
-import { TipoMedioPago } from "./types.js";
+import {
+  CodigoDescuento,
+  CodigoImpuesto,
+  CodigoReferencia,
+  TipoDocReferencia,
+  TipoMedioPago,
+} from "./types.js";
 
 /** Tipos de comprobante que comparten esta misma estructura de XML. */
 export enum TipoDocumento {
@@ -67,6 +73,23 @@ const NS_DS = "http://www.w3.org/2000/09/xmldsig#";
 /** Formatea un monto con 5 decimales, como exige Hacienda. */
 function money(n: number): string {
   return n.toFixed(5);
+}
+
+/**
+ * Impuesto que se declara en una línea sin impuestos: v4.4 exige al menos un
+ * nodo Impuesto por línea, así que va IVA con tarifa 0% (código 01 del catálogo
+ * de tarifas) y monto 0. Una exención real necesita además el nodo Exoneracion.
+ */
+const IMPUESTO_CERO = {
+  codigo: CodigoImpuesto.IVA as string,
+  codigoTarifa: "01",
+  tarifa: 0,
+  monto: 0,
+};
+
+/** Recorta/rellena una descripción libre al rango 5–100 que exige el XSD. */
+function descripcionOtro(texto: string): string {
+  return texto.trim().padEnd(5, ".").slice(0, 100);
 }
 
 /**
@@ -141,27 +164,37 @@ function addLinea(
   node.ele("MontoTotal").txt(money(calc.montoTotal));
 
   for (const d of input.descuentos ?? []) {
+    // Orden del XSD: MontoDescuento → CodigoDescuento → CodigoDescuentoOTRO? →
+    // NaturalezaDescuento?. CodigoDescuento es obligatorio en v4.4.
     const desc = node.ele("Descuento");
     desc.ele("MontoDescuento").txt(money(d.monto));
+    const codigo = d.codigo?.trim() || CodigoDescuento.Comercial;
+    desc.ele("CodigoDescuento").txt(codigo);
+    if (codigo === CodigoDescuento.Otros) {
+      // Obligatorio con el código 99; el XSD exige entre 5 y 100 caracteres.
+      desc.ele("CodigoDescuentoOTRO").txt(descripcionOtro(d.codigoOtro || d.naturaleza));
+    }
     desc.ele("NaturalezaDescuento").txt(d.naturaleza);
   }
 
   node.ele("SubTotal").txt(money(calc.subTotal));
 
-  if (calc.impuestos.length > 0) {
-    node.ele("BaseImponible").txt(money(calc.subTotal));
-    for (const imp of calc.impuestos) {
-      const i = node.ele("Impuesto");
-      i.ele("Codigo").txt(imp.codigo);
-      i.ele("CodigoTarifaIVA").txt(imp.codigoTarifa);
-      i.ele("Tarifa").txt(imp.tarifa.toFixed(2));
-      i.ele("Monto").txt(money(imp.monto));
-    }
-    // Obligatorio en v4.4, va entre Impuesto e ImpuestoNeto. En una venta normal
-    // (sin impuesto asumido por el emisor / cobrado a nivel de fábrica) es 0.
-    node.ele("ImpuestoAsumidoEmisorFabrica").txt(money(0));
-    node.ele("ImpuestoNeto").txt(money(calc.impuestoNeto));
+  // BaseImponible, Impuesto, ImpuestoAsumidoEmisorFabrica e ImpuestoNeto no
+  // llevan minOccurs="0" en el XSD v4.4: van SIEMPRE, también en líneas sin
+  // impuesto, que se declaran con una tarifa de 0% y monto 0.
+  node.ele("BaseImponible").txt(money(calc.subTotal));
+  const impuestos = calc.impuestos.length > 0 ? calc.impuestos : [IMPUESTO_CERO];
+  for (const imp of impuestos) {
+    const i = node.ele("Impuesto");
+    i.ele("Codigo").txt(imp.codigo);
+    i.ele("CodigoTarifaIVA").txt(imp.codigoTarifa);
+    i.ele("Tarifa").txt(imp.tarifa.toFixed(2));
+    i.ele("Monto").txt(money(imp.monto));
   }
+  // En una venta normal (sin impuesto asumido por el emisor / cobrado a nivel
+  // de fábrica) es 0.
+  node.ele("ImpuestoAsumidoEmisorFabrica").txt(money(0));
+  node.ele("ImpuestoNeto").txt(money(calc.impuestoNeto));
 
   node.ele("MontoTotalLinea").txt(money(calc.montoTotalLinea));
 }
@@ -211,13 +244,22 @@ function addResumen(
   node.ele("TotalComprobante").txt(money(resumen.totalComprobante));
 }
 
+/**
+ * v4.4 renombró dos nodos respecto de v4.3: `TipoDoc` → `TipoDocIR` y
+ * `FechaEmision` → `FechaEmisionIR` (para no chocar con los del comprobante).
+ * Con los nombres viejos Hacienda rechaza la nota por esquema.
+ */
 function addInformacionReferencia(root: XmlNode, refs: InformacionReferencia[]): void {
   for (const ref of refs) {
     const node = root.ele("InformacionReferencia");
-    node.ele("TipoDoc").txt(ref.tipoDoc);
+    node.ele("TipoDocIR").txt(ref.tipoDoc);
+    if (ref.tipoDoc === TipoDocReferencia.Otro && ref.tipoDocOtro)
+      node.ele("TipoDocRefOTRO").txt(descripcionOtro(ref.tipoDocOtro));
     node.ele("Numero").txt(ref.numero);
-    node.ele("FechaEmision").txt(fechaEmisionISO(ref.fechaEmision));
+    node.ele("FechaEmisionIR").txt(fechaEmisionISO(ref.fechaEmision));
     node.ele("Codigo").txt(ref.codigo);
+    if (ref.codigo === CodigoReferencia.Otros && ref.codigoOtro)
+      node.ele("CodigoReferenciaOTRO").txt(descripcionOtro(ref.codigoOtro));
     node.ele("Razon").txt(ref.razon);
   }
 }

@@ -68,7 +68,10 @@ describe("generarComprobanteXml — Notas de crédito/débito", () => {
     expect(xml).toContain("<NotaCreditoElectronica");
     expect(xml).toContain("/v4.4/notaCreditoElectronica");
     const nc = parse(xml).NotaCreditoElectronica;
-    expect(nc.InformacionReferencia.TipoDoc).toBe("01");
+    // v4.4 renombró TipoDoc → TipoDocIR y FechaEmision → FechaEmisionIR.
+    expect(nc.InformacionReferencia.TipoDocIR).toBe("01");
+    expect(nc.InformacionReferencia.FechaEmisionIR).toBeDefined();
+    expect(nc.InformacionReferencia.TipoDoc).toBeUndefined();
     expect(nc.InformacionReferencia.Numero).toBe("1".repeat(50));
     expect(nc.InformacionReferencia.Codigo).toBe("01");
     expect(nc.InformacionReferencia.Razon).toBe("Anulación por error");

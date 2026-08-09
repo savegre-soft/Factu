@@ -66,8 +66,15 @@ const datosComprobante = {
     cedulaEmisor: { type: "string" },
     sucursal: { type: "number", default: 1 },
     terminal: { type: "number", default: 1 },
-    consecutivo: { type: "number" },
-    codigoActividadEmisor: { type: "string", description: "6 dígitos" },
+    consecutivo: {
+      type: "number",
+      description:
+        "Opcional: si se omite, la API reserva el siguiente de la serie (emisor + sucursal + terminal + tipo). Pasarlo fuerza ese número.",
+    },
+    codigoActividadEmisor: {
+      type: "string",
+      description: "6 caracteres: CIIU4 del RUT (p. ej. 8549.0) o CIIU3 de 6 dígitos",
+    },
     codigoActividadReceptor: { type: "string" },
     emisor: {
       type: "object",
@@ -119,7 +126,8 @@ const datosComprobante = {
       },
     },
   },
-  required: ["cedulaEmisor", "consecutivo", "codigoActividadEmisor", "emisor", "lineas"],
+  // `consecutivo` NO va aquí: lo asigna la API si el cliente lo omite.
+  required: ["cedulaEmisor", "codigoActividadEmisor", "emisor", "lineas"],
 } as const;
 
 // ---- Esquemas por ruta ----

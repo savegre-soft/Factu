@@ -23,6 +23,15 @@ export interface ErrorValidacion {
   mensaje: string;
 }
 
+/**
+ * Código de actividad económica: el XSD v4.4 lo define como una cadena de
+ * exactamente 6 caracteres, no como 6 dígitos. Desde TRIBU-CR el catálogo es
+ * CIIU4 y viene con punto (`8549.0`, tal cual lo devuelve `/fe/ae` del RUT);
+ * se siguen aceptando los CIIU3 viejos de 6 dígitos (`620100`).
+ */
+const ACTIVIDAD_VALIDA = /^(\d{4}\.\d|\d{6})$/;
+const MENSAJE_ACTIVIDAD = "Debe tener 6 caracteres: CIIU4 del RUT (p. ej. 8549.0) o 6 dígitos";
+
 /** Subconjunto de negocio que se valida (lo satisfacen FacturaInput y DatosFactura). */
 export interface ComprobanteValidable {
   codigoActividadEmisor: string;
@@ -144,8 +153,8 @@ export function validarComprobante(
 ): ErrorValidacion[] {
   const errores: ErrorValidacion[] = [];
 
-  if (!/^\d{6}$/.test(datos.codigoActividadEmisor)) {
-    errores.push({ campo: "codigoActividadEmisor", mensaje: "Debe tener 6 dígitos" });
+  if (!ACTIVIDAD_VALIDA.test(datos.codigoActividadEmisor)) {
+    errores.push({ campo: "codigoActividadEmisor", mensaje: MENSAJE_ACTIVIDAD });
   }
 
   validarEmisor(errores, datos.emisor);

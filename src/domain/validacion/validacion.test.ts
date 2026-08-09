@@ -64,6 +64,20 @@ describe("validarComprobante — emisor y receptor", () => {
     );
   });
 
+  it("acepta el código CIIU4 del RUT con punto", () => {
+    const d = valido();
+    d.codigoActividadEmisor = "8549.0";
+    const errs = validarComprobante(TipoDocumento.FacturaElectronica, d);
+    expect(campos(errs)).not.toContain("codigoActividadEmisor");
+  });
+
+  it("rechaza un CIIU4 mal formado", () => {
+    const d = valido();
+    d.codigoActividadEmisor = "854.90";
+    const errs = validarComprobante(TipoDocumento.FacturaElectronica, d);
+    expect(campos(errs)).toContain("codigoActividadEmisor");
+  });
+
   it("valida el largo de la cédula según el tipo", () => {
     const d = valido();
     d.emisor.identificacion = { tipo: TipoIdentificacion.Fisica, numero: "3101123456" }; // 10, física espera 9

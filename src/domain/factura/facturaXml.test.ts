@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { create } from "xmlbuilder2";
 import { generarFacturaXml, fechaEmisionISO } from "./facturaXml.js";
 import {
+  CodigoDescuento,
   CodigoImpuesto,
   CondicionVenta,
   TipoIdentificacion,
@@ -113,6 +114,48 @@ describe("generarFacturaXml", () => {
     expect(resumen.TotalImpuesto).toBe("260.00000");
     expect(resumen.TotalComprobante).toBe("2260.00000");
     expect(resumen.MedioPago.TipoMedioPago).toBe("01");
+  });
+
+  it("una línea sin impuestos declara igual el bloque obligatorio con tarifa 0%", () => {
+    // BaseImponible, Impuesto, ImpuestoAsumidoEmisorFabrica e ImpuestoNeto no
+    // llevan minOccurs="0" en el XSD v4.4: sin ellos Hacienda rechaza por esquema.
+    const input = facturaBase();
+    delete input.lineas[0]!.impuestos;
+    const linea = parse(generarFacturaXml(input)).FacturaElectronica.DetalleServicio.LineaDetalle;
+
+    expect(linea.BaseImponible).toBe("2000.00000");
+    expect(linea.Impuesto.Codigo).toBe("01");
+    expect(linea.Impuesto.CodigoTarifaIVA).toBe("01");
+    expect(linea.Impuesto.Tarifa).toBe("0.00");
+    expect(linea.Impuesto.Monto).toBe("0.00000");
+    expect(linea.ImpuestoAsumidoEmisorFabrica).toBe("0.00000");
+    expect(linea.ImpuestoNeto).toBe("0.00000");
+    expect(linea.MontoTotalLinea).toBe("2000.00000");
+  });
+
+  it("el descuento lleva CodigoDescuento, obligatorio en v4.4", () => {
+    const input = facturaBase();
+    input.lineas[0]!.descuentos = [{ monto: 100, naturaleza: "Descuento de prueba" }];
+    const linea = parse(generarFacturaXml(input)).FacturaElectronica.DetalleServicio.LineaDetalle;
+
+    expect(linea.Descuento.MontoDescuento).toBe("100.00000");
+    // Sin código explícito cae en "07" (descuento comercial).
+    expect(linea.Descuento.CodigoDescuento).toBe("07");
+    expect(linea.Descuento.NaturalezaDescuento).toBe("Descuento de prueba");
+    const orden = Object.keys(linea.Descuento);
+    expect(orden.indexOf("MontoDescuento")).toBeLessThan(orden.indexOf("CodigoDescuento"));
+    expect(orden.indexOf("CodigoDescuento")).toBeLessThan(orden.indexOf("NaturalezaDescuento"));
+  });
+
+  it('el código de descuento "99" arrastra CodigoDescuentoOTRO', () => {
+    const input = facturaBase();
+    input.lineas[0]!.descuentos = [
+      { monto: 100, codigo: CodigoDescuento.Otros, naturaleza: "Acuerdo puntual con el cliente" },
+    ];
+    const desc = parse(generarFacturaXml(input)).FacturaElectronica.DetalleServicio.LineaDetalle
+      .Descuento;
+    expect(desc.CodigoDescuento).toBe("99");
+    expect(desc.CodigoDescuentoOTRO).toBe("Acuerdo puntual con el cliente");
   });
 
   it("omite el receptor cuando no se proporciona (caso tiquete)", () => {

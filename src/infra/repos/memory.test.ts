@@ -49,4 +49,47 @@ describe("ComprobanteRepositoryMemoria", () => {
     expect(await repo.listarPorEmisor("3101")).toHaveLength(2);
     expect(await repo.listarPorEmisor("otro")).toHaveLength(1);
   });
+
+  describe("consecutivos", () => {
+    const serie = { cedulaEmisor: "3101", sucursal: 1, terminal: 1, tipo: "FE" };
+
+    it("entrega números crecientes y sin repetir", async () => {
+      const repo = new ComprobanteRepositoryMemoria();
+      expect(await repo.reservarConsecutivo(serie)).toBe(1);
+      expect(await repo.reservarConsecutivo(serie)).toBe(2);
+      expect(await repo.reservarConsecutivo(serie)).toBe(3);
+    });
+
+    it("reservas concurrentes no chocan", async () => {
+      const repo = new ComprobanteRepositoryMemoria();
+      const numeros = await Promise.all(
+        Array.from({ length: 20 }, () => repo.reservarConsecutivo(serie)),
+      );
+      expect(new Set(numeros).size).toBe(20);
+    });
+
+    it("cada serie lleva su propio contador", async () => {
+      const repo = new ComprobanteRepositoryMemoria();
+      await repo.reservarConsecutivo(serie);
+      await repo.reservarConsecutivo(serie);
+      expect(await repo.reservarConsecutivo({ ...serie, tipo: "TE" })).toBe(1);
+      expect(await repo.reservarConsecutivo({ ...serie, terminal: 2 })).toBe(1);
+      expect(await repo.reservarConsecutivo(serie)).toBe(3);
+    });
+
+    it("arranca desde el mayor consecutivo ya emitido", async () => {
+      const repo = new ComprobanteRepositoryMemoria();
+      // 001 sucursal + 00001 terminal + 01 factura + 0000000007
+      await repo.crear({ ...nuevo, consecutivo: "00100001010000000007" });
+      expect(await repo.proximoConsecutivo(serie)).toBe(8);
+      expect(await repo.reservarConsecutivo(serie)).toBe(8);
+    });
+
+    it("proximoConsecutivo no consume el número", async () => {
+      const repo = new ComprobanteRepositoryMemoria();
+      expect(await repo.proximoConsecutivo(serie)).toBe(1);
+      expect(await repo.proximoConsecutivo(serie)).toBe(1);
+      expect(await repo.reservarConsecutivo(serie)).toBe(1);
+    });
+  });
 });

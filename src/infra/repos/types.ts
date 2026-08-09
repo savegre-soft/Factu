@@ -632,11 +632,27 @@ export interface NuevoComprobante {
   respuestaXml?: string;
 }
 
+/** Identifica la serie de consecutivos: un contador por cada combinación. */
+export interface SerieConsecutivo {
+  cedulaEmisor: string;
+  sucursal: number;
+  terminal: number;
+  /** Tipo de documento: FE, TE, NC, ND. */
+  tipo: string;
+}
+
 export interface ComprobanteRepository {
   crear(rec: NuevoComprobante): Promise<ComprobanteRecord>;
   actualizarEstado(clave: string, estado: string, respuestaXml?: string): Promise<void>;
   buscar(clave: string): Promise<ComprobanteRecord | null>;
   listarPorEmisor(cedula: string): Promise<ComprobanteRecord[]>;
+  /**
+   * Reserva el siguiente consecutivo de la serie y lo devuelve. Es atómico: dos
+   * emisiones simultáneas nunca reciben el mismo número.
+   */
+  reservarConsecutivo(serie: SerieConsecutivo): Promise<number>;
+  /** Número que entregaría la próxima reserva, sin consumirlo (para la UI). */
+  proximoConsecutivo(serie: SerieConsecutivo): Promise<number>;
 }
 
 // ---- Envíos del comprobante al cliente (auditoría de correo saliente) ----

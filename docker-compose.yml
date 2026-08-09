@@ -31,9 +31,14 @@ services:
       # Persistencia en PostgreSQL
       PERSISTENCIA: prisma
       DATABASE_URL: postgresql://postgres:postgres@db:5432/factu?schema=public
-      # ⚠️ Cambia estas llaves en un entorno real
-      FACTU_MASTER_KEY: cambia-esta-llave-maestra
-      JWT_SECRET: cambia-este-secreto-jwt
+      # Secretos: vienen del archivo .env (no versionado), NUNCA en este archivo.
+      # Sin ellos el arranque falla a propósito: un valor por defecto aquí queda
+      # público en el repositorio, y la llave maestra es la que cifra los .p12.
+      # Genera unos nuevos con:  node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+      # Si cambias FACTU_MASTER_KEY hay que recifrar lo guardado:
+      #   node scripts/rotar-llave-maestra.mjs   (ver cabecera del script)
+      FACTU_MASTER_KEY: ${FACTU_MASTER_KEY:?define FACTU_MASTER_KEY en .env}
+      JWT_SECRET: ${JWT_SECRET:?define JWT_SECRET en .env}
       # Ambiente de pruebas de Hacienda (ajusta las URLs a las oficiales del sandbox)
       HACIENDA_ENV: stag
       HACIENDA_IDP_URL: https://idp.comprobanteselectronicos.go.cr/auth/realms/rut-stag/protocol/openid-connect/token

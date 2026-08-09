@@ -9,6 +9,7 @@ import {
 import { generarFacturaXml } from "../domain/factura/facturaXml.js";
 import { env } from "../config/env.js";
 import {
+  CodigoDescuento,
   CondicionVenta,
   TipoIdentificacion,
   CodigoImpuesto,
@@ -37,7 +38,15 @@ const lineaSchema = z.object({
   precioUnitario: z.number().nonnegative(),
   esServicio: z.boolean().optional(),
   descuentos: z
-    .array(z.object({ monto: z.number().nonnegative(), naturaleza: z.string() }))
+    .array(
+      z.object({
+        monto: z.number().nonnegative(),
+        // Obligatorio en el XML v4.4; si no viene, el generador usa "07".
+        codigo: z.nativeEnum(CodigoDescuento).optional(),
+        codigoOtro: z.string().optional(),
+        naturaleza: z.string(),
+      }),
+    )
     .optional(),
   impuestos: z
     .array(
@@ -55,7 +64,11 @@ export const datosFacturaSchema = z.object({
   cedulaEmisor: z.string().regex(/^\d+$/),
   sucursal: z.number().int().nonnegative().default(1),
   terminal: z.number().int().nonnegative().default(1),
-  consecutivo: z.number().int().nonnegative(),
+  /**
+   * Número consecutivo. Si se omite, la API reserva el siguiente de la serie
+   * (emisor + sucursal + terminal + tipo); pasarlo explícitamente lo fuerza.
+   */
+  consecutivo: z.number().int().nonnegative().optional(),
   // Datos de la factura (hito 3)
   codigoActividadEmisor: z.string(),
   codigoActividadReceptor: z.string().optional(),
@@ -89,9 +102,11 @@ export const datosFacturaSchema = z.object({
     .array(
       z.object({
         tipoDoc: z.string(),
+        tipoDocOtro: z.string().optional(),
         numero: z.string(),
         fechaEmision: z.coerce.date(),
         codigo: z.string(),
+        codigoOtro: z.string().optional(),
         razon: z.string(),
       }),
     )
@@ -111,7 +126,8 @@ export async function facturaRoutes(app: FastifyInstance): Promise<void> {
       sucursal: b.sucursal,
       terminal: b.terminal,
       tipo: TipoComprobante.FacturaElectronica,
-      consecutivo: b.consecutivo,
+      // La vista previa no consume número de la serie: si no viene, se muestra 1.
+      consecutivo: b.consecutivo ?? 1,
       situacion: SituacionComprobante.Normal,
     });
 

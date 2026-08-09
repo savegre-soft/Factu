@@ -75,7 +75,9 @@ import type {
   NuevoNotificationMessage,
   CambiosNotificationMessage,
   FiltroNotificacion,
+  SerieConsecutivo,
 } from "./types.js";
+import { prefijoConsecutivo as prefijoSerie } from "../../domain/clave/clave.js";
 
 export class TenantRepositoryMemoria implements TenantRepository {
   private readonly tenants = new Map<string, TenantRecord>();
@@ -779,5 +781,35 @@ export class ComprobanteRepositoryMemoria implements ComprobanteRepository {
 
   async listarPorEmisor(cedula: string): Promise<ComprobanteRecord[]> {
     return [...this.comprobantes.values()].filter((c) => c.cedulaEmisor === cedula);
+  }
+
+  /** Contadores por serie. En memoria no hay concurrencia real: JS es de un hilo. */
+  private readonly series = new Map<string, number>();
+
+  private static claveSerie(s: SerieConsecutivo): string {
+    return `${s.cedulaEmisor}|${s.sucursal}|${s.terminal}|${s.tipo}`;
+  }
+
+  /** Arranca la serie desde el mayor consecutivo ya emitido (migración suave). */
+  private ultimoUsado(serie: SerieConsecutivo): number {
+    const guardado = this.series.get(ComprobanteRepositoryMemoria.claveSerie(serie));
+    if (guardado !== undefined) return guardado;
+    const prefijo = prefijoSerie(serie);
+    let max = 0;
+    for (const c of this.comprobantes.values()) {
+      if (c.cedulaEmisor !== serie.cedulaEmisor || !c.consecutivo.startsWith(prefijo)) continue;
+      max = Math.max(max, Number(c.consecutivo.slice(-10)) || 0);
+    }
+    return max;
+  }
+
+  async reservarConsecutivo(serie: SerieConsecutivo): Promise<number> {
+    const siguiente = this.ultimoUsado(serie) + 1;
+    this.series.set(ComprobanteRepositoryMemoria.claveSerie(serie), siguiente);
+    return siguiente;
+  }
+
+  async proximoConsecutivo(serie: SerieConsecutivo): Promise<number> {
+    return this.ultimoUsado(serie) + 1;
   }
 }

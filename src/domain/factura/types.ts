@@ -88,8 +88,33 @@ export interface Receptor {
   correoElectronico?: string;
 }
 
+/** Código de descuento (catálogo v4.4, nota 20). Obligatorio si hay descuento. */
+export enum CodigoDescuento {
+  Regalia = "01",
+  RegaliaIvaCobradoAlCliente = "02",
+  Bonificacion = "03",
+  Volumen = "04",
+  Temporada = "05",
+  Promocional = "06",
+  Comercial = "07",
+  Frecuencia = "08",
+  Sostenido = "09",
+  Otros = "99",
+}
+
 export interface Descuento {
   monto: number;
+  /**
+   * Código del catálogo. Si se omite se asume "07" (descuento comercial), el
+   * genérico: v4.4 lo exige y antes no se enviaba, así que las peticiones
+   * viejas siguen funcionando.
+   */
+  codigo?: CodigoDescuento | string;
+  /**
+   * Descripción libre, obligatoria para Hacienda cuando el código es "99".
+   * Si se omite se usa la naturaleza.
+   */
+  codigoOtro?: string;
   /** Naturaleza/justificación del descuento. */
   naturaleza: string;
 }
@@ -158,10 +183,14 @@ export enum CodigoReferencia {
  */
 export interface InformacionReferencia {
   tipoDoc: TipoDocReferencia | string;
+  /** Descripción del tipo de documento; obligatoria si tipoDoc es "99". */
+  tipoDocOtro?: string;
   /** Clave de 50 dígitos del documento referenciado. */
   numero: string;
   fechaEmision: Date;
   codigo: CodigoReferencia | string;
+  /** Descripción de la razón; obligatoria si codigo es "99". */
+  codigoOtro?: string;
   razon: string;
 }
 

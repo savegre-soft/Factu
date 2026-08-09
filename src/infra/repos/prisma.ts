@@ -85,7 +85,9 @@ import type {
   PasswordResetRecord,
   PasswordResetRepository,
   NuevoPasswordReset,
+  SerieConsecutivo,
 } from "./types.js";
+import { prefijoConsecutivo as prefijoSerie } from "../../domain/clave/clave.js";
 
 export const prisma = new PrismaClient();
 
@@ -907,6 +909,74 @@ export class ComprobanteRepositoryPrisma implements ComprobanteRepository {
   async listarPorEmisor(cedula: string): Promise<ComprobanteRecord[]> {
     const rows = await this.db.comprobante.findMany({ where: { cedulaEmisor: cedula } });
     return rows.map(aComprobanteRecord);
+  }
+
+  /**
+   * Mayor consecutivo ya emitido en la serie. Solo se usa para sembrar el
+   * contador la primera vez (migración suave desde el esquema viejo, en el que
+   * el número lo mandaba el cliente).
+   */
+  private async ultimoEmitido(serie: SerieConsecutivo): Promise<number> {
+    const row = await this.db.comprobante.findFirst({
+      where: { cedulaEmisor: serie.cedulaEmisor, consecutivo: { startsWith: prefijoSerie(serie) } },
+      orderBy: { consecutivo: "desc" },
+      select: { consecutivo: true },
+    });
+    // El consecutivo es de ancho fijo con ceros a la izquierda: el orden
+    // alfabético coincide con el numérico.
+    return row ? Number(row.consecutivo.slice(-10)) || 0 : 0;
+  }
+
+  async reservarConsecutivo(serie: SerieConsecutivo): Promise<number> {
+    const id = {
+      cedulaEmisor_sucursal_terminal_tipo: {
+        cedulaEmisor: serie.cedulaEmisor,
+        sucursal: serie.sucursal,
+        terminal: serie.terminal,
+        tipo: serie.tipo,
+      },
+    };
+
+    // `increment` en un UPDATE es atómico en Postgres: dos emisiones simultáneas
+    // obtienen números distintos aunque lleguen en el mismo instante.
+    try {
+      const row = await this.db.consecutivoEmisor.update({
+        where: id,
+        data: { ultimo: { increment: 1 } },
+      });
+      return row.ultimo;
+    } catch {
+      // Todavía no existe el contador de esta serie: se crea partiendo de lo ya
+      // emitido. Si otra petición lo creó primero, se reintenta el update.
+      const base = await this.ultimoEmitido(serie);
+      try {
+        const row = await this.db.consecutivoEmisor.create({
+          data: { ...serie, ultimo: base + 1 },
+        });
+        return row.ultimo;
+      } catch {
+        const row = await this.db.consecutivoEmisor.update({
+          where: id,
+          data: { ultimo: { increment: 1 } },
+        });
+        return row.ultimo;
+      }
+    }
+  }
+
+  async proximoConsecutivo(serie: SerieConsecutivo): Promise<number> {
+    const row = await this.db.consecutivoEmisor.findUnique({
+      where: {
+        cedulaEmisor_sucursal_terminal_tipo: {
+          cedulaEmisor: serie.cedulaEmisor,
+          sucursal: serie.sucursal,
+          terminal: serie.terminal,
+          tipo: serie.tipo,
+        },
+      },
+      select: { ultimo: true },
+    });
+    return (row ? row.ultimo : await this.ultimoEmitido(serie)) + 1;
   }
 }
 

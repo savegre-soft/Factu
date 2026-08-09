@@ -330,6 +330,24 @@ model Comprobante {
   @@index([cedulaEmisor])
 }
 
+/// Contador de consecutivos por emisor, punto de venta y tipo de documento.
+///
+/// La emisión RESERVA el número aquí de forma atómica en vez de confiar en el
+/// que manda el cliente: si lo llevara el navegador, dos pestañas o una recarga
+/// repetirían el consecutivo y Hacienda rechazaría el comprobante.
+model ConsecutivoEmisor {
+  cedulaEmisor String
+  sucursal     Int
+  terminal     Int
+  /// Tipo de documento: FE, TE, NC, ND.
+  tipo         String
+  /// Último número entregado (el próximo es este + 1).
+  ultimo       Int      @default(0)
+  updatedAt    DateTime @updatedAt
+
+  @@id([cedulaEmisor, sucursal, terminal, tipo])
+}
+
 /// Auditoría: acciones de negocio atribuibles a un usuario o integración.
 model RegistroAuditoria {
   id          String   @id

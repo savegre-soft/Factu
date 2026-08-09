@@ -35,6 +35,9 @@ COPY package*.json ./
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/prisma ./prisma
+# Utilidades de mantenimiento (rotación de la llave maestra): se ejecutan con
+# `docker compose exec app node scripts/…`, así que tienen que viajar en la imagen.
+COPY scripts ./scripts
 
 EXPOSE 3000
 CMD ["node", "dist/main.js"]
