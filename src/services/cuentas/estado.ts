@@ -15,8 +15,16 @@ export interface EstadoOAuth {
   exp: number;
 }
 
+/**
+ * Mismo secreto que firma los JWT. En producción es obligatorio: firmar el
+ * `state` del OAuth con un valor conocido permitiría falsificar callbacks.
+ */
 function secreto(): string {
-  return env.JWT_SECRET ?? "dev-jwt-secret-inseguro-solo-desarrollo";
+  if (env.JWT_SECRET) return env.JWT_SECRET;
+  if (env.NODE_ENV === "production") {
+    throw new Error("JWT_SECRET es obligatorio en producción");
+  }
+  return "dev-jwt-secret-inseguro-solo-desarrollo";
 }
 
 function b64url(buf: Buffer): string {

@@ -11,6 +11,7 @@ import {
 } from "../plugins/schemas.js";
 import { Permiso } from "../domain/auth/roles.js";
 import { emisorDelTenant } from "./_guards.js";
+import { paginaSchema } from "./_pagina.js";
 
 const datosFiscalesSchema = z
   .object({
@@ -118,14 +119,25 @@ export async function emisorRoutes(app: FastifyInstance): Promise<void> {
   app.get(
     "/clientes",
     { schema: clientesListarSchema, preHandler: app.requierePermiso(Permiso.Leer) },
-    async (request) => {
-      const clientes = await clienteRepository.listarPorTenant(request.user.tenantId);
-      return clientes.map((c) => ({
-        numero: c.numero,
-        tipo: c.tipo,
-        nombre: c.nombre,
-        correo: c.correo,
-      }));
+    async (request, reply) => {
+      const q = paginaSchema.safeParse(request.query);
+      if (!q.success) {
+        return reply.status(400).send({ error: "Entrada inválida", detalles: q.error.issues });
+      }
+      const [clientes, total] = await Promise.all([
+        clienteRepository.listarPorTenant(request.user.tenantId, q.data),
+        clienteRepository.contarPorTenant(request.user.tenantId),
+      ]);
+      return {
+        total,
+        ...q.data,
+        items: clientes.map((c) => ({
+          numero: c.numero,
+          tipo: c.tipo,
+          nombre: c.nombre,
+          correo: c.correo,
+        })),
+      };
     },
   );
 

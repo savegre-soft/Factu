@@ -11,6 +11,7 @@ import {
   EmisorRepositoryMemoria,
   EnvioComprobanteRepositoryMemoria,
   ComprobanteRepositoryMemoria,
+  SesionHaciendaRepositoryMemoria,
   MensajeRepositoryMemoria,
   SmtpSalienteRepositoryMemoria,
   WebhookRepositoryMemoria,
@@ -33,6 +34,7 @@ import type {
   EmisorRepository,
   EnvioComprobanteRepository,
   ComprobanteRepository,
+  SesionHaciendaRepository,
   MensajeRepository,
   SmtpSalienteRepository,
   WebhookRepository,
@@ -50,6 +52,7 @@ import type {
 
 let emisorRepo: EmisorRepository;
 let comprobanteRepo: ComprobanteRepository;
+let sesionHaciendaRepo: SesionHaciendaRepository;
 let tenantRepo: TenantRepository;
 let usuarioRepo: UsuarioRepository;
 let apiKeyRepo: ApiKeyRepository;
@@ -79,6 +82,7 @@ if (env.PERSISTENCIA === "prisma") {
     EmisorRepositoryPrisma,
     EnvioComprobanteRepositoryPrisma,
     ComprobanteRepositoryPrisma,
+    SesionHaciendaRepositoryPrisma,
     MensajeRepositoryPrisma,
     SmtpSalienteRepositoryPrisma,
     WebhookRepositoryPrisma,
@@ -96,6 +100,7 @@ if (env.PERSISTENCIA === "prisma") {
   } = await import("./prisma.js");
   emisorRepo = new EmisorRepositoryPrisma(prisma);
   comprobanteRepo = new ComprobanteRepositoryPrisma(prisma);
+  sesionHaciendaRepo = new SesionHaciendaRepositoryPrisma(prisma);
   tenantRepo = new TenantRepositoryPrisma(prisma);
   usuarioRepo = new UsuarioRepositoryPrisma(prisma);
   apiKeyRepo = new ApiKeyRepositoryPrisma(prisma);
@@ -117,6 +122,7 @@ if (env.PERSISTENCIA === "prisma") {
 } else {
   emisorRepo = new EmisorRepositoryMemoria();
   comprobanteRepo = new ComprobanteRepositoryMemoria();
+  sesionHaciendaRepo = new SesionHaciendaRepositoryMemoria();
   tenantRepo = new TenantRepositoryMemoria();
   usuarioRepo = new UsuarioRepositoryMemoria();
   apiKeyRepo = new ApiKeyRepositoryMemoria();
@@ -139,6 +145,7 @@ if (env.PERSISTENCIA === "prisma") {
 
 export const emisorRepository = emisorRepo;
 export const comprobanteRepository = comprobanteRepo;
+export const sesionHaciendaRepository = sesionHaciendaRepo;
 export const tenantRepository = tenantRepo;
 export const usuarioRepository = usuarioRepo;
 export const apiKeyRepository = apiKeyRepo;

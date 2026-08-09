@@ -5,6 +5,7 @@ import { iniciarPollerCorreo } from "./services/correo/poller.js";
 import { iniciarPollerEntrega } from "./services/entrega/poller.js";
 import { iniciarPollerWebhooks } from "./services/webhooks/poller.js";
 import { iniciarPollerNotificaciones } from "./services/notificaciones/poller.js";
+import { iniciarPollerReconsulta } from "./services/hacienda/pollerReconsulta.js";
 
 const app = buildServer();
 
@@ -28,6 +29,8 @@ app.listen({ port: env.PORT, host: "0.0.0.0" }).then(
     iniciarPollerWebhooks((msg) => app.log.info(msg));
     // Reintentos de notificaciones (SMS, WhatsApp, Slack, Teams).
     iniciarPollerNotificaciones((msg) => app.log.info(msg));
+    // Comprobantes que Hacienda tardó en resolver: se vuelven a consultar.
+    iniciarPollerReconsulta((msg) => app.log.info(msg));
   },
   (err) => {
     app.log.error(err);

@@ -20,6 +20,7 @@ import {
   TipoDocumento,
 } from "../../domain/factura/facturaXml.js";
 import type { FacturaInput } from "../../domain/factura/types.js";
+import { calcularTotales } from "../../domain/factura/totales.js";
 
 /** Mapea el tipo de documento al código de tipo usado en el consecutivo/clave. */
 const TIPO_CONSECUTIVO: Record<TipoDocumento, TipoComprobante> = {
@@ -58,6 +59,9 @@ export interface EmisionResult {
   xmlFirmado: string;
   envio: EnvioResult;
   estado: EstadoResult;
+  /** Total del comprobante y su moneda, para persistirlos junto al registro. */
+  total: number;
+  moneda: string;
 }
 
 /** Ejecuta el flujo completo de emisión de un comprobante electrónico. */
@@ -87,6 +91,9 @@ export async function emitirComprobante(
     fechaEmision: fecha,
   };
   const xml = generarComprobanteXml(tipo, facturaInput);
+  // Ya está calculado aquí: guardarlo evita tener que reparsear el XML después
+  // para poder sumar importes.
+  const { resumen } = calcularTotales(facturaInput);
 
   // 3. Firma
   const xmlFirmado = await deps.firmar(xml, deps.certificado);
@@ -103,7 +110,15 @@ export async function emitirComprobante(
   const envio = await deps.cliente.enviar(token, envelope);
   const estado = await deps.cliente.esperarEstadoFinal(token, clave);
 
-  return { clave, consecutivo, xmlFirmado, envio, estado };
+  return {
+    clave,
+    consecutivo,
+    xmlFirmado,
+    envio,
+    estado,
+    total: resumen.totalComprobante,
+    moneda: datos.moneda?.codigo ?? "CRC",
+  };
 }
 
 /** Emite una Factura Electrónica (atajo de `emitirComprobante`). */

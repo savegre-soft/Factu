@@ -11,6 +11,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { borradorService } from "../services/borradores/index.js";
 import { Permiso } from "../domain/auth/roles.js";
+import { paginaSchema } from "./_pagina.js";
 import {
   borradorCrearSchema,
   borradorActualizarSchema,
@@ -58,10 +59,14 @@ export async function borradorRoutes(app: FastifyInstance): Promise<void> {
   app.get(
     "/borradores",
     { schema: borradorListarSchema, preHandler: app.requierePermiso(Permiso.Leer) },
-    async (request) => {
-      const lista = await borradorService.listar(request.user.tenantId);
+    async (request, reply) => {
+      const q = paginaSchema.safeParse(request.query);
+      if (!q.success) {
+        return reply.status(400).send({ error: "Entrada inválida", detalles: q.error.issues });
+      }
+      const { items, total } = await borradorService.listar(request.user.tenantId, q.data);
       // El listado no incluye el JSON completo del formulario (puede ser grande).
-      return lista.map(({ datos: _omit, ...resto }) => resto);
+      return { total, ...q.data, items: items.map(({ datos: _omit, ...resto }) => resto) };
     },
   );
 

@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { datosFacturaSchema } from "./factura.js";
-import { tokenStore } from "../services/auth/index.js";
+import { tokenStore, SinSesionHaciendaError } from "../services/auth/index.js";
 import { receptionClient, emitirComprobante } from "../services/hacienda/index.js";
 import { firmar } from "../services/firma/index.js";
 import { generarP12Autofirmado, type Certificado } from "../services/firma/certificado.js";
@@ -117,6 +117,15 @@ export async function comprobanteRoutes(app: FastifyInstance): Promise<void> {
         certificado,
       });
     } catch (err) {
+      // Sin sesión con el IDP no es un fallo de la integración: es que hay que
+      // autenticar al emisor. Con 401 el cliente sabe que debe pedir credenciales.
+      if (err instanceof SinSesionHaciendaError) {
+        return reply.status(401).send({
+          error: "Sin sesión con Hacienda",
+          detalle: err.message,
+          emisor: err.emisor,
+        });
+      }
       request.log.error(err);
       return reply.status(502).send({
         error: "Fallo al emitir el comprobante",
@@ -135,6 +144,8 @@ export async function comprobanteRoutes(app: FastifyInstance): Promise<void> {
           tipo,
           consecutivo: result.consecutivo,
           estado: result.estado.estado,
+          total: result.total,
+          moneda: result.moneda,
           xmlFirmado: result.xmlFirmado,
           respuestaXml: result.estado.respuestaXml,
         });
@@ -271,16 +282,33 @@ export async function comprobanteRoutes(app: FastifyInstance): Promise<void> {
   app.get(
     "/comprobantes",
     { schema: comprobantesListarSchema, preHandler: app.requierePermiso(Permiso.Leer) },
-    async (request) => {
+    async (request, reply) => {
+      const q = z
+        .object({
+          limite: z.coerce.number().int().min(1).max(200).default(50),
+          desplazamiento: z.coerce.number().int().min(0).default(0),
+        })
+        .safeParse(request.query);
+      if (!q.success) {
+        return reply.status(400).send({ error: "Entrada inválida", detalles: q.error.issues });
+      }
+
       const emisores = await emisorRepository.listarPorTenant(request.user.tenantId);
-      const porEmisor = await Promise.all(
-        emisores.map((e) => comprobanteRepository.listarPorEmisor(e.cedula)),
-      );
       const nombres = new Map(emisores.map((e) => [e.cedula, e.nombre]));
-      return porEmisor
-        .flat()
-        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
-        .map((c) => ({
+
+      // Un solo query paginado y sin los XML: antes era uno por emisor, traía el
+      // histórico completo (~13 KB por fila) y ordenaba en memoria.
+      const pagina = await comprobanteRepository.listarResumen({
+        cedulasEmisor: emisores.map((e) => e.cedula),
+        limite: q.data.limite,
+        desplazamiento: q.data.desplazamiento,
+      });
+
+      return {
+        total: pagina.total,
+        limite: q.data.limite,
+        desplazamiento: q.data.desplazamiento,
+        items: pagina.items.map((c) => ({
           clave: c.clave,
           tipo: c.tipo,
           consecutivo: c.consecutivo,
@@ -289,7 +317,8 @@ export async function comprobanteRoutes(app: FastifyInstance): Promise<void> {
           emisorNombre: nombres.get(c.cedulaEmisor) ?? "",
           createdAt: c.createdAt,
           updatedAt: c.updatedAt,
-        }));
+        })),
+      };
     },
   );
 

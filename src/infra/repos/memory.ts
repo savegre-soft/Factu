@@ -76,8 +76,52 @@ import type {
   CambiosNotificationMessage,
   FiltroNotificacion,
   SerieConsecutivo,
+  SesionHaciendaRecord,
+  SesionHaciendaRepository,
+  ComprobanteResumen,
+  FiltroComprobantes,
+  PaginaComprobantes,
+  AgregadoComprobantes,
+  PuntoSerieDiaria,
+  RangoConsulta,
+  Pagina,
+  MontoAgregado,
 } from "./types.js";
+import { ESTADOS_FINALES } from "./types.js";
 import { prefijoConsecutivo as prefijoSerie } from "../../domain/clave/clave.js";
+
+/** Aplica la ventana de paginación; sin ventana devuelve la lista entera. */
+function recortar<T>(items: T[], pagina?: Pagina): T[] {
+  if (!pagina) return items;
+  return items.slice(pagina.desplazamiento, pagina.desplazamiento + pagina.limite);
+}
+
+export class SesionHaciendaRepositoryMemoria implements SesionHaciendaRepository {
+  private readonly sesiones = new Map<string, SesionHaciendaRecord>();
+
+  async guardar(rec: SesionHaciendaRecord): Promise<void> {
+    this.sesiones.set(rec.cedulaEmisor, rec);
+  }
+
+  async buscar(cedulaEmisor: string): Promise<SesionHaciendaRecord | null> {
+    return this.sesiones.get(cedulaEmisor) ?? null;
+  }
+
+  async eliminar(cedulaEmisor: string): Promise<void> {
+    this.sesiones.delete(cedulaEmisor);
+  }
+
+  async purgarVencidas(ahora: Date): Promise<number> {
+    let borradas = 0;
+    for (const [clave, sesion] of this.sesiones) {
+      if (sesion.refreshExpiresAt <= ahora) {
+        this.sesiones.delete(clave);
+        borradas++;
+      }
+    }
+    return borradas;
+  }
+}
 
 export class TenantRepositoryMemoria implements TenantRepository {
   private readonly tenants = new Map<string, TenantRecord>();
@@ -369,10 +413,15 @@ export class ClienteRepositoryMemoria implements ClienteRepository {
     return this.clientes.get(this.clave(tenantId, numero)) ?? null;
   }
 
-  async listarPorTenant(tenantId: string): Promise<ClienteRecord[]> {
-    return [...this.clientes.values()]
+  async listarPorTenant(tenantId: string, pagina?: Pagina): Promise<ClienteRecord[]> {
+    const todos = [...this.clientes.values()]
       .filter((c) => c.tenantId === tenantId)
       .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+    return recortar(todos, pagina);
+  }
+
+  async contarPorTenant(tenantId: string): Promise<number> {
+    return [...this.clientes.values()].filter((c) => c.tenantId === tenantId).length;
   }
 }
 
@@ -631,10 +680,15 @@ export class BorradorRepositoryMemoria implements BorradorRepository {
     return this.borradores.get(id) ?? null;
   }
 
-  async listarPorTenant(tenantId: string): Promise<BorradorRecord[]> {
-    return [...this.borradores.values()]
+  async listarPorTenant(tenantId: string, pagina?: Pagina): Promise<BorradorRecord[]> {
+    const todos = [...this.borradores.values()]
       .filter((b) => b.tenantId === tenantId)
       .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+    return recortar(todos, pagina);
+  }
+
+  async contarPorTenant(tenantId: string): Promise<number> {
+    return [...this.borradores.values()].filter((b) => b.tenantId === tenantId).length;
   }
 
   async eliminar(id: string): Promise<void> {
@@ -732,8 +786,15 @@ export class DocumentoRecibidoRepositoryMemoria implements DocumentoRecibidoRepo
     );
   }
 
-  async listarPorTenant(tenantId: string): Promise<DocumentoRecibidoRecord[]> {
-    return [...this.docs.values()].filter((d) => d.tenantId === tenantId);
+  async listarPorTenant(tenantId: string, pagina?: Pagina): Promise<DocumentoRecibidoRecord[]> {
+    return recortar(
+      [...this.docs.values()].filter((d) => d.tenantId === tenantId),
+      pagina,
+    );
+  }
+
+  async contarPorTenant(tenantId: string): Promise<number> {
+    return [...this.docs.values()].filter((d) => d.tenantId === tenantId).length;
   }
 
   async guardarMensajeReceptor(id: string, mr: MensajeReceptorGuardado): Promise<void> {
@@ -781,6 +842,109 @@ export class ComprobanteRepositoryMemoria implements ComprobanteRepository {
 
   async listarPorEmisor(cedula: string): Promise<ComprobanteRecord[]> {
     return [...this.comprobantes.values()].filter((c) => c.cedulaEmisor === cedula);
+  }
+
+  /** Quita los XML de una fila para no exponerlos en los listados. */
+  private static resumen(c: ComprobanteRecord): ComprobanteResumen {
+    const { xmlFirmado: _x, respuestaXml: _r, ...resto } = c;
+    return resto;
+  }
+
+  private enRango(c: ComprobanteRecord, rango?: RangoConsulta): boolean {
+    if (rango?.desde && c.createdAt < rango.desde) return false;
+    if (rango?.hasta && c.createdAt > rango.hasta) return false;
+    return true;
+  }
+
+  async listarResumen(filtro: FiltroComprobantes): Promise<PaginaComprobantes> {
+    const cedulas = new Set(filtro.cedulasEmisor);
+    const todos = [...this.comprobantes.values()]
+      .filter((c) => cedulas.has(c.cedulaEmisor) && this.enRango(c, filtro))
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+
+    const desde = filtro.desplazamiento ?? 0;
+    const items = todos
+      .slice(desde, desde + (filtro.limite ?? todos.length))
+      .map(ComprobanteRepositoryMemoria.resumen);
+    return { items, total: todos.length };
+  }
+
+  async listarNoFinalizados(limite: number, maxAntiguedadMs: number): Promise<ComprobanteResumen[]> {
+    const corte = Date.now() - maxAntiguedadMs;
+    return [...this.comprobantes.values()]
+      .filter(
+        (c) => !ESTADOS_FINALES.includes(c.estado.toLowerCase()) && c.createdAt.getTime() >= corte,
+      )
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+      .slice(0, limite)
+      .map(ComprobanteRepositoryMemoria.resumen);
+  }
+
+  async agregarPorEmisor(
+    cedulasEmisor: string[],
+    rango?: RangoConsulta,
+  ): Promise<AgregadoComprobantes[]> {
+    const cedulas = new Set(cedulasEmisor);
+    const grupos = new Map<string, AgregadoComprobantes>();
+    for (const c of this.comprobantes.values()) {
+      if (!cedulas.has(c.cedulaEmisor) || !this.enRango(c, rango)) continue;
+      const clave = `${c.cedulaEmisor}|${c.estado}|${c.tipo}`;
+      const previo = grupos.get(clave);
+      if (previo) {
+        previo.total++;
+        if (c.createdAt > previo.ultima) previo.ultima = c.createdAt;
+      } else {
+        grupos.set(clave, {
+          cedulaEmisor: c.cedulaEmisor,
+          estado: c.estado,
+          tipo: c.tipo,
+          total: 1,
+          ultima: c.createdAt,
+        });
+      }
+    }
+    return [...grupos.values()];
+  }
+
+  async serieDiaria(
+    cedulasEmisor: string[],
+    rango?: RangoConsulta,
+  ): Promise<PuntoSerieDiaria[]> {
+    const cedulas = new Set(cedulasEmisor);
+    const porDia = new Map<string, number>();
+    for (const c of this.comprobantes.values()) {
+      if (!cedulas.has(c.cedulaEmisor) || !this.enRango(c, rango)) continue;
+      const dia = c.createdAt.toISOString().slice(0, 10);
+      porDia.set(dia, (porDia.get(dia) ?? 0) + 1);
+    }
+    return [...porDia.entries()]
+      .map(([fecha, total]) => ({ fecha, total }))
+      .sort((a, b) => a.fecha.localeCompare(b.fecha));
+  }
+
+  async montosPorMoneda(
+    cedulasEmisor: string[],
+    rango?: RangoConsulta,
+  ): Promise<MontoAgregado[]> {
+    const cedulas = new Set(cedulasEmisor);
+    const grupos = new Map<string, MontoAgregado>();
+    for (const c of this.comprobantes.values()) {
+      if (!cedulas.has(c.cedulaEmisor) || !this.enRango(c, rango)) continue;
+      if (c.estado !== "aceptado" || c.total == null) continue;
+      const moneda = c.moneda ?? "CRC";
+      const mes = c.createdAt.toISOString().slice(0, 7);
+      const clave = `${moneda}|${mes}`;
+      // Las notas de crédito restan: el neto es lo que se facturó de verdad.
+      const aporte = (c.tipo === "NC" ? -1 : 1) * c.total;
+      const previo = grupos.get(clave);
+      if (previo) {
+        previo.total += aporte;
+        previo.cantidad++;
+      } else {
+        grupos.set(clave, { moneda, mes, total: aporte, cantidad: 1 });
+      }
+    }
+    return [...grupos.values()].sort((a, b) => a.mes.localeCompare(b.mes));
   }
 
   /** Contadores por serie. En memoria no hay concurrencia real: JS es de un hilo. */

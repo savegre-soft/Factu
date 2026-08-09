@@ -7,7 +7,7 @@
  */
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { tokenStore, HaciendaAuthError } from "../services/auth/index.js";
+import { tokenStore, HaciendaAuthError, SinSesionHaciendaError } from "../services/auth/index.js";
 import { haciendaLoginSchema, haciendaEmisorSchema } from "../plugins/schemas.js";
 import { Permiso } from "../domain/auth/roles.js";
 import { emisorDelTenant } from "./_guards.js";
@@ -18,6 +18,15 @@ const loginSchema = z.object({
   password: z.string().min(1),
 });
 const emisorSchema = z.object({ emisor: z.string().min(1) });
+
+/** `{ error: "invalid_grant" }` del IDP: credenciales equivocadas, no un fallo. */
+function esInvalidGrant(cuerpo: unknown): boolean {
+  if (typeof cuerpo === "string") return cuerpo.includes("invalid_grant");
+  if (cuerpo && typeof cuerpo === "object") {
+    return (cuerpo as { error?: unknown }).error === "invalid_grant";
+  }
+  return false;
+}
 
 export async function haciendaRoutes(app: FastifyInstance): Promise<void> {
   app.post(
@@ -40,8 +49,16 @@ export async function haciendaRoutes(app: FastifyInstance): Promise<void> {
         };
       } catch (err) {
         if (err instanceof HaciendaAuthError) {
-          return reply.status(err.status === 401 ? 401 : 502).send({
-            error: "Autenticación con Hacienda falló",
+          // El IDP devuelve 400 invalid_grant cuando el usuario o la clave están
+          // mal: eso es culpa de las credenciales (401), no de la integración
+          // (502). Mandarlo todo a 502 hacía imposible distinguir un tecleo
+          // equivocado de Hacienda caída.
+          const esCredencial =
+            err.status === 401 || (err.status === 400 && esInvalidGrant(err.body));
+          return reply.status(esCredencial ? 401 : 502).send({
+            error: esCredencial
+              ? "Usuario o contraseña de Hacienda incorrectos"
+              : "Hacienda no pudo procesar la autenticación",
             detalle: err.body,
           });
         }
@@ -63,7 +80,15 @@ export async function haciendaRoutes(app: FastifyInstance): Promise<void> {
         const accessToken = await tokenStore.getAccessToken(parsed.data.emisor);
         return { accessToken };
       } catch (err) {
-        return reply.status(401).send({ error: (err as Error).message });
+        // 401 solo cuando falta la sesión; un fallo del IDP al renovar es 502.
+        if (err instanceof SinSesionHaciendaError) {
+          return reply.status(401).send({ error: err.message });
+        }
+        request.log.error(err);
+        return reply.status(502).send({
+          error: "No se pudo renovar la sesión con Hacienda",
+          detalle: (err as Error).message,
+        });
       }
     },
   );

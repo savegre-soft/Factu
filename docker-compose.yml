@@ -28,6 +28,10 @@ services:
     environment:
       PORT: 3000
       NODE_ENV: production
+      # Este stack corre con NODE_ENV=production pero es el entorno local, así
+      # que la documentación interactiva se deja encendida a propósito. En un
+      # servidor real, quitar esta línea la apaga.
+      DOCS_PUBLICAS: "true"
       # Persistencia en PostgreSQL
       PERSISTENCIA: prisma
       DATABASE_URL: postgresql://postgres:postgres@db:5432/factu?schema=public
@@ -62,6 +66,13 @@ services:
       SMTP_FROM: ""
     # Crea/actualiza las tablas y arranca el servidor
     command: sh -c "npx prisma db push --skip-generate && node dist/main.js"
+    # Un contenedor vivo pero con la API caída se ve igual que uno sano sin esto.
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
     ports:
       - "3000:3000"
 

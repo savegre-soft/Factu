@@ -19,6 +19,7 @@ import {
   recibidoMensajeReceptorSchema,
 } from "../plugins/schemas.js";
 import type { DocumentoRecibidoRecord } from "../infra/repos/types.js";
+import { paginaSchema } from "./_pagina.js";
 
 const crearSchema = z.object({ xml: z.string().min(1) });
 const mrSchema = z.object({
@@ -82,9 +83,13 @@ export async function documentosRecibidosRoutes(app: FastifyInstance): Promise<v
   app.get(
     "/recibidos",
     { schema: recibidoListarSchema, preHandler: app.requierePermiso(Permiso.Leer) },
-    async (request) => {
-      const docs = await documentosRecibidosService.listar(request.user.tenantId);
-      return docs.map(resumen);
+    async (request, reply) => {
+      const q = paginaSchema.safeParse(request.query);
+      if (!q.success) {
+        return reply.status(400).send({ error: "Entrada inválida", detalles: q.error.issues });
+      }
+      const { items, total } = await documentosRecibidosService.listar(request.user.tenantId, q.data);
+      return { total, ...q.data, items: items.map(resumen) };
     },
   );
 

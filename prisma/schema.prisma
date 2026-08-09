@@ -320,6 +320,10 @@ model Comprobante {
   consecutivo  String
   /// Estado devuelto por Hacienda: aceptado, rechazado, procesando, etc.
   estado       String
+  /// Total del comprobante y su moneda, copiados al emitir. Sin esto, sumar
+  /// importes obligaba a descargar y parsear el XML de cada comprobante.
+  total        Decimal? @db.Decimal(18, 5)
+  moneda       String?
   /// XML firmado enviado a Hacienda.
   xmlFirmado   String?
   /// XML de respuesta de Hacienda.
@@ -328,6 +332,22 @@ model Comprobante {
   updatedAt    DateTime @updatedAt
 
   @@index([cedulaEmisor])
+}
+
+/// Sesión con el IDP de Hacienda, por emisor.
+///
+/// Los tokens se guardan CIFRADOS (JSON de SecretoSellado, igual que el .p12):
+/// son credenciales de acceso a Hacienda. Persistirlos evita que un reinicio de
+/// la API obligue a todos los emisores a volver a autenticarse.
+model SesionHacienda {
+  cedulaEmisor String @id
+  /// TokenSet completo cifrado. NUNCA en texto plano.
+  tokensSellado String
+  /// Vencimiento del refresh token: pasado ese punto la fila es basura.
+  refreshExpiresAt DateTime
+  updatedAt DateTime @updatedAt
+
+  @@index([refreshExpiresAt])
 }
 
 /// Contador de consecutivos por emisor, punto de venta y tipo de documento.

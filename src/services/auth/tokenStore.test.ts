@@ -86,7 +86,7 @@ describe("TokenStore", () => {
 
     clock = 1_000_000 + 2_000_000; // pasó incluso el refresh
     await expect(store.getAccessToken("EMISOR")).rejects.toThrow(/expiró/);
-    expect(store.has("EMISOR")).toBe(false);
+    expect(await store.has("EMISOR")).toBe(false);
   });
 
   it("lanza si no hay sesión", async () => {
@@ -100,6 +100,66 @@ describe("TokenStore", () => {
 
     await store.logout("EMISOR");
     expect(auth.logout).toHaveBeenCalledWith("RT");
-    expect(store.has("EMISOR")).toBe(false);
+    expect(await store.has("EMISOR")).toBe(false);
+  });
+
+  describe("respaldo persistente", () => {
+    /** Almacén de mentira: un Map, como haría la base. */
+    function almacenFalso() {
+      const datos = new Map<string, TokenSet>();
+      return {
+        datos,
+        guardar: vi.fn(async (k: string, t: TokenSet) => void datos.set(k, t)),
+        leer: vi.fn(async (k: string) => datos.get(k) ?? null),
+        borrar: vi.fn(async (k: string) => void datos.delete(k)),
+      };
+    }
+
+    it("guarda la sesión al iniciarla", async () => {
+      const almacen = almacenFalso();
+      const store = new TokenStore(auth as unknown as HaciendaAuthClient, now, almacen);
+      await store.login("EMISOR", "u", "p");
+      expect(almacen.guardar).toHaveBeenCalledWith("EMISOR", expect.objectContaining({ accessToken: "AT" }));
+    });
+
+    it("rehidrata desde el respaldo tras un reinicio", async () => {
+      const almacen = almacenFalso();
+      const previo = new TokenStore(auth as unknown as HaciendaAuthClient, now, almacen);
+      await previo.login("EMISOR", "u", "p");
+
+      // Instancia nueva = proceso reiniciado: el Map arranca vacío.
+      const store = new TokenStore(auth as unknown as HaciendaAuthClient, now, almacen);
+      expect(await store.getAccessToken("EMISOR")).toBe("AT");
+      expect(auth.login).toHaveBeenCalledTimes(1); // no hubo que volver a autenticar
+    });
+
+    it("respalda los tokens rotados al renovar", async () => {
+      const almacen = almacenFalso();
+      auth.refresh.mockResolvedValue(
+        tokenSet({ accessToken: "AT2", refreshToken: "RT2", accessExpiresAt: 9_000_000 }),
+      );
+      const store = new TokenStore(auth as unknown as HaciendaAuthClient, now, almacen);
+      await store.login("EMISOR", "u", "p");
+
+      clock = 1_000_000 + 400_000; // venció el access, no el refresh
+      expect(await store.getAccessToken("EMISOR")).toBe("AT2");
+      expect(almacen.datos.get("EMISOR")?.refreshToken).toBe("RT2");
+    });
+
+    it("logout borra también el respaldo", async () => {
+      const almacen = almacenFalso();
+      const store = new TokenStore(auth as unknown as HaciendaAuthClient, now, almacen);
+      await store.login("EMISOR", "u", "p");
+      await store.logout("EMISOR");
+      expect(almacen.datos.has("EMISOR")).toBe(false);
+    });
+
+    it("si el respaldo falla, la sesión sigue funcionando en memoria", async () => {
+      const almacen = almacenFalso();
+      almacen.guardar.mockRejectedValue(new Error("base caída"));
+      const store = new TokenStore(auth as unknown as HaciendaAuthClient, now, almacen);
+      await store.login("EMISOR", "u", "p");
+      expect(await store.getAccessToken("EMISOR")).toBe("AT");
+    });
   });
 });

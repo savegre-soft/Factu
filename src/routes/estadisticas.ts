@@ -4,6 +4,7 @@
  *  GET /estadisticas/resumen           → usuarios, emisores y comprobantes
  *  GET /estadisticas/emisores          → desglose por emisor
  *  GET /estadisticas/emisores/:cedula  → un emisor concreto
+ *  GET /estadisticas/montos            → importes netos por moneda y mes
  *  GET /estadisticas/serie             → comprobantes emitidos por día
  *
  * Todas requieren permiso de lectura y quedan acotadas al tenant del JWT.
@@ -14,6 +15,7 @@ import { estadisticasService, type RangoFechas } from "../services/estadisticas/
 import { Permiso } from "../domain/auth/roles.js";
 import {
   estadisticasResumenSchema,
+  estadisticasMontosSchema,
   estadisticasEmisoresSchema,
   estadisticasEmisorSchema,
   estadisticasSerieSchema,
@@ -42,6 +44,12 @@ export async function estadisticasRoutes(app: FastifyInstance): Promise<void> {
     const r = leerRango(request.query);
     if (!r.ok) return reply.status(400).send({ error: "Rango inválido", detalles: r.issues });
     return estadisticasService.resumen(request.user.tenantId, r.rango);
+  });
+
+  app.get("/estadisticas/montos", { schema: estadisticasMontosSchema, ...soloLectura }, async (request, reply) => {
+    const r = leerRango(request.query);
+    if (!r.ok) return reply.status(400).send({ error: "Rango inválido", detalles: r.issues });
+    return estadisticasService.montos(request.user.tenantId, r.rango);
   });
 
   app.get("/estadisticas/emisores", { schema: estadisticasEmisoresSchema, ...soloLectura }, async (request, reply) => {

@@ -5,6 +5,7 @@ import type { FastifyInstance } from "fastify";
 import fastifySwagger from "@fastify/swagger";
 import fastifySwaggerUi from "@fastify/swagger-ui";
 import scalarApiReference from "@scalar/fastify-api-reference";
+import { env } from "../config/env.js";
 
 export function registrarSwagger(app: FastifyInstance): void {
   app.register(fastifySwagger, {
@@ -39,6 +40,15 @@ export function registrarSwagger(app: FastifyInstance): void {
       },
     },
   });
+
+  // La documentación interactiva expone el mapa completo de la API. En
+  // producción se apaga salvo que se pida explícitamente con DOCS_PUBLICAS.
+  // Por defecto: encendida en desarrollo, apagada en producción.
+  const publicar = env.DOCS_PUBLICAS ?? env.NODE_ENV !== "production";
+  if (!publicar) {
+    app.log?.info?.("[docs] documentación interactiva desactivada (DOCS_PUBLICAS=false)");
+    return;
+  }
 
   // UI clásica de Swagger (queda en /swagger)
   app.register(fastifySwaggerUi, {

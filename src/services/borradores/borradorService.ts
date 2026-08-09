@@ -75,9 +75,15 @@ export class BorradorService {
     return publico(rec);
   }
 
-  async listar(tenantId: string): Promise<BorradorPublico[]> {
-    const lista = await this.repo.listarPorTenant(tenantId);
-    return lista.map(publico);
+  async listar(
+    tenantId: string,
+    pagina?: { limite: number; desplazamiento: number },
+  ): Promise<{ items: BorradorPublico[]; total: number }> {
+    const [lista, total] = await Promise.all([
+      this.repo.listarPorTenant(tenantId, pagina),
+      this.repo.contarPorTenant(tenantId),
+    ]);
+    return { items: lista.map(publico), total };
   }
 
   async obtener(tenantId: string, id: string): Promise<BorradorPublico | null> {

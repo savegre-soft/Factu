@@ -1,6 +1,8 @@
 import Fastify, { type FastifyError, type FastifyInstance } from "fastify";
 import { registrarSwagger } from "./plugins/swagger.js";
 import { registrarAuth } from "./plugins/auth.js";
+import { registrarRateLimit } from "./plugins/rateLimit.js";
+import { registrarSeguridad } from "./plugins/seguridad.js";
 import { homeRoutes } from "./routes/home.js";
 import { healthRoutes } from "./routes/health.js";
 import { ambienteRoutes } from "./routes/ambiente.js";
@@ -28,8 +30,10 @@ import { registrarLog } from "./services/logs/index.js";
 export function buildServer(): FastifyInstance {
   const app = Fastify({ logger: true });
 
-  // Swagger y auth deben registrarse antes que las rutas.
+  // Cabeceras, Swagger, límite de peticiones y auth van antes que las rutas.
+  registrarSeguridad(app);
   registrarSwagger(app);
+  registrarRateLimit(app);
   registrarAuth(app);
 
   // Los errores no controlados (500) quedan en el registro del sistema, además

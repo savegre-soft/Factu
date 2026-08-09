@@ -83,8 +83,15 @@ export class DocumentosRecibidosService {
     return { documento, yaExistia: false };
   }
 
-  async listar(tenantId: string): Promise<DocumentoRecibidoRecord[]> {
-    return this.repo.listarPorTenant(tenantId);
+  async listar(
+    tenantId: string,
+    pagina?: { limite: number; desplazamiento: number },
+  ): Promise<{ items: DocumentoRecibidoRecord[]; total: number }> {
+    const [items, total] = await Promise.all([
+      this.repo.listarPorTenant(tenantId, pagina),
+      this.repo.contarPorTenant(tenantId),
+    ]);
+    return { items, total };
   }
 
   /** Devuelve un documento del tenant, o null si no existe o es de otro tenant. */

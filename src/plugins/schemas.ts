@@ -6,6 +6,8 @@
  * real la siguen haciendo zod (estructura) y la capa de dominio (reglas de negocio).
  */
 
+import { paginaQuerystring } from "../routes/_pagina.js";
+
 const identificacion = {
   type: "object",
   properties: {
@@ -401,6 +403,15 @@ export const estadisticasEmisorSchema = {
   querystring: rangoFechas,
 } as const;
 
+export const estadisticasMontosSchema = {
+  tags: ["Estadísticas"],
+  summary: "Importes netos facturados por moneda y mes (las notas de crédito restan)",
+  description:
+    "Suma el total de los comprobantes ACEPTADOS. Los emitidos antes de que la API guardara el importe no cuentan.",
+  security: bearer,
+  querystring: rangoFechas,
+} as const;
+
 export const estadisticasSerieSchema = {
   tags: ["Estadísticas"],
   summary: "Comprobantes emitidos por día",
@@ -484,6 +495,7 @@ export const clientesListarSchema = {
   tags: ["Emisores"],
   summary: "Lista los clientes (receptores) usados en facturas pasadas",
   security: bearer,
+  querystring: paginaQuerystring,
 } as const;
 
 export const clienteBuscarSchema = {
@@ -537,7 +549,16 @@ export const comprobanteEnviarSchema = {
 export const comprobantesListarSchema = {
   tags: ["Comprobantes"],
   summary: "Lista los comprobantes emitidos del tenant (facturas enviadas)",
+  description:
+    "Paginado: devuelve { total, limite, desplazamiento, items }. Los XML no vienen en el listado; se obtienen con GET /comprobante/{clave}.",
   security: bearer,
+  querystring: {
+    type: "object",
+    properties: {
+      limite: { type: "integer", minimum: 1, maximum: 200, default: 50 },
+      desplazamiento: { type: "integer", minimum: 0, default: 0 },
+    },
+  },
 } as const;
 
 export const comprobanteReenviarSchema = {
@@ -600,6 +621,7 @@ export const borradorListarSchema = {
   tags: ["Borradores"],
   summary: "Lista los borradores del tenant",
   security: bearer,
+  querystring: paginaQuerystring,
 } as const;
 
 export const borradorGetSchema = {
@@ -749,6 +771,7 @@ export const recibidoListarSchema = {
   tags: ["Recibidos"],
   summary: "Lista los documentos recibidos del tenant (sin XML)",
   security: bearer,
+  querystring: paginaQuerystring,
 } as const;
 
 export const recibidoGetSchema = {

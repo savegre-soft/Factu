@@ -190,7 +190,9 @@ export interface BorradorRepository {
   crear(rec: NuevoBorrador): Promise<BorradorRecord>;
   actualizar(id: string, cambios: CambiosBorrador): Promise<BorradorRecord>;
   buscarPorId(id: string): Promise<BorradorRecord | null>;
-  listarPorTenant(tenantId: string): Promise<BorradorRecord[]>;
+  /** Sin `pagina` devuelve todo (compatibilidad); con ella, una ventana. */
+  listarPorTenant(tenantId: string, pagina?: Pagina): Promise<BorradorRecord[]>;
+  contarPorTenant(tenantId: string): Promise<number>;
   eliminar(id: string): Promise<void>;
 }
 
@@ -554,7 +556,8 @@ export interface ClienteRepository {
   /** Inserta o actualiza el cliente (clave: tenant + número). */
   upsert(input: NuevoCliente): Promise<ClienteRecord>;
   buscarPorNumero(tenantId: string, numero: string): Promise<ClienteRecord | null>;
-  listarPorTenant(tenantId: string): Promise<ClienteRecord[]>;
+  listarPorTenant(tenantId: string, pagina?: Pagina): Promise<ClienteRecord[]>;
+  contarPorTenant(tenantId: string): Promise<number>;
 }
 
 // ---- Identidades OAuth (Google / Microsoft) ----
@@ -616,6 +619,9 @@ export interface ComprobanteRecord {
   tipo: string;
   consecutivo: string;
   estado: string;
+  /** Total del comprobante y moneda. Null en los emitidos antes de guardarlos. */
+  total?: number | null;
+  moneda?: string | null;
   xmlFirmado?: string;
   respuestaXml?: string;
   createdAt: Date;
@@ -628,8 +634,25 @@ export interface NuevoComprobante {
   tipo: string;
   consecutivo: string;
   estado: string;
+  total?: number | null;
+  moneda?: string | null;
   xmlFirmado?: string;
   respuestaXml?: string;
+}
+
+/** Sesión con el IDP de Hacienda, con el TokenSet ya cifrado. */
+export interface SesionHaciendaRecord {
+  cedulaEmisor: string;
+  tokensSellado: SecretoSellado;
+  refreshExpiresAt: Date;
+}
+
+export interface SesionHaciendaRepository {
+  guardar(rec: SesionHaciendaRecord): Promise<void>;
+  buscar(cedulaEmisor: string): Promise<SesionHaciendaRecord | null>;
+  eliminar(cedulaEmisor: string): Promise<void>;
+  /** Borra las sesiones cuyo refresh token ya venció. Devuelve cuántas. */
+  purgarVencidas(ahora: Date): Promise<number>;
 }
 
 /** Identifica la serie de consecutivos: un contador por cada combinación. */
@@ -641,11 +664,91 @@ export interface SerieConsecutivo {
   tipo: string;
 }
 
+/**
+ * Fila de listado: sin `xmlFirmado` ni `respuestaXml`, que pesan ~13 KB cada
+ * uno y no se usan al listar. Traerlos convertía cualquier listado en una
+ * descarga de decenas de MB.
+ */
+export type ComprobanteResumen = Omit<ComprobanteRecord, "xmlFirmado" | "respuestaXml">;
+
+/** Ventana de paginación compartida por los listados. */
+export interface Pagina {
+  limite: number;
+  desplazamiento: number;
+}
+
+/** Rango temporal inclusivo para filtrar por fecha de creación. */
+export interface RangoConsulta {
+  desde?: Date;
+  hasta?: Date;
+}
+
+export interface FiltroComprobantes extends RangoConsulta {
+  /** Emisores del tenant: el aislamiento se hace siempre por esta lista. */
+  cedulasEmisor: string[];
+  limite?: number;
+  desplazamiento?: number;
+}
+
+export interface PaginaComprobantes {
+  items: ComprobanteResumen[];
+  /** Total que cumple el filtro, para poder paginar en la interfaz. */
+  total: number;
+}
+
+/** Conteo agrupado por emisor, estado y tipo (una fila por combinación). */
+export interface AgregadoComprobantes {
+  cedulaEmisor: string;
+  estado: string;
+  tipo: string;
+  total: number;
+  ultima: Date;
+}
+
+/**
+ * Importes agregados por moneda y mes. Los sumó la base: el navegador ya no
+ * descarga el XML de cada comprobante para calcularlos.
+ */
+export interface MontoAgregado {
+  moneda: string;
+  /** "YYYY-MM". */
+  mes: string;
+  /** Neto: las notas de crédito restan. */
+  total: number;
+  /** Comprobantes que entraron en la suma. */
+  cantidad: number;
+}
+
+/** Un día natural (UTC) con su cantidad de comprobantes. */
+export interface PuntoSerieDiaria {
+  fecha: string;
+  total: number;
+}
+
+/** Estados que ya no cambian: el resto hay que reconsultarlo en Hacienda. */
+export const ESTADOS_FINALES = ["aceptado", "rechazado"];
+
 export interface ComprobanteRepository {
   crear(rec: NuevoComprobante): Promise<ComprobanteRecord>;
   actualizarEstado(clave: string, estado: string, respuestaXml?: string): Promise<void>;
   buscar(clave: string): Promise<ComprobanteRecord | null>;
   listarPorEmisor(cedula: string): Promise<ComprobanteRecord[]>;
+  /** Listado paginado, más reciente primero, sin los XML. */
+  listarResumen(filtro: FiltroComprobantes): Promise<PaginaComprobantes>;
+  /**
+   * Comprobantes cuyo estado todavía no es definitivo, para volver a
+   * consultarlos en Hacienda. `maxAntiguedadMs` descarta los muy viejos.
+   */
+  listarNoFinalizados(limite: number, maxAntiguedadMs: number): Promise<ComprobanteResumen[]>;
+  /** Conteos agrupados, para las estadísticas, sin traer las filas. */
+  agregarPorEmisor(
+    cedulasEmisor: string[],
+    rango?: RangoConsulta,
+  ): Promise<AgregadoComprobantes[]>;
+  /** Cantidad de comprobantes por día natural. */
+  serieDiaria(cedulasEmisor: string[], rango?: RangoConsulta): Promise<PuntoSerieDiaria[]>;
+  /** Importes netos por moneda y mes, solo de los comprobantes aceptados. */
+  montosPorMoneda(cedulasEmisor: string[], rango?: RangoConsulta): Promise<MontoAgregado[]>;
   /**
    * Reserva el siguiente consecutivo de la serie y lo devuelve. Es atómico: dos
    * emisiones simultáneas nunca reciben el mismo número.
@@ -740,7 +843,8 @@ export interface DocumentoRecibidoRepository {
   crear(rec: NuevoDocumentoRecibido): Promise<DocumentoRecibidoRecord>;
   buscarPorId(id: string): Promise<DocumentoRecibidoRecord | null>;
   buscarPorClave(tenantId: string, clave: string): Promise<DocumentoRecibidoRecord | null>;
-  listarPorTenant(tenantId: string): Promise<DocumentoRecibidoRecord[]>;
+  listarPorTenant(tenantId: string, pagina?: Pagina): Promise<DocumentoRecibidoRecord[]>;
+  contarPorTenant(tenantId: string): Promise<number>;
   guardarMensajeReceptor(id: string, mr: MensajeReceptorGuardado): Promise<void>;
   eliminar(id: string): Promise<void>;
 }

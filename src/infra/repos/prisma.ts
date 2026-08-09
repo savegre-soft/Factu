@@ -86,10 +86,26 @@ import type {
   PasswordResetRepository,
   NuevoPasswordReset,
   SerieConsecutivo,
+  SesionHaciendaRecord,
+  SesionHaciendaRepository,
+  ComprobanteResumen,
+  FiltroComprobantes,
+  PaginaComprobantes,
+  AgregadoComprobantes,
+  PuntoSerieDiaria,
+  RangoConsulta,
+  Pagina,
+  MontoAgregado,
 } from "./types.js";
+import { ESTADOS_FINALES } from "./types.js";
 import { prefijoConsecutivo as prefijoSerie } from "../../domain/clave/clave.js";
 
 export const prisma = new PrismaClient();
+
+/** Traduce la ventana de paginación a los argumentos de Prisma. */
+function ventana(pagina?: Pagina): { take?: number; skip?: number } {
+  return pagina ? { take: pagina.limite, skip: pagina.desplazamiento } : {};
+}
 
 export class OAuthIdentityRepositoryPrisma implements OAuthIdentityRepository {
   constructor(private readonly db: PrismaClient) {}
@@ -157,8 +173,16 @@ export class ClienteRepositoryPrisma implements ClienteRepository {
     return this.db.cliente.findUnique({ where: { tenantId_numero: { tenantId, numero } } });
   }
 
-  async listarPorTenant(tenantId: string): Promise<ClienteRecord[]> {
-    return this.db.cliente.findMany({ where: { tenantId }, orderBy: { updatedAt: "desc" } });
+  async listarPorTenant(tenantId: string, pagina?: Pagina): Promise<ClienteRecord[]> {
+    return this.db.cliente.findMany({
+      where: { tenantId },
+      orderBy: { updatedAt: "desc" },
+      ...ventana(pagina),
+    });
+  }
+
+  async contarPorTenant(tenantId: string): Promise<number> {
+    return this.db.cliente.count({ where: { tenantId } });
   }
 }
 
@@ -664,8 +688,16 @@ export class BorradorRepositoryPrisma implements BorradorRepository {
     return this.db.borrador.findUnique({ where: { id } });
   }
 
-  async listarPorTenant(tenantId: string): Promise<BorradorRecord[]> {
-    return this.db.borrador.findMany({ where: { tenantId }, orderBy: { updatedAt: "desc" } });
+  async listarPorTenant(tenantId: string, pagina?: Pagina): Promise<BorradorRecord[]> {
+    return this.db.borrador.findMany({
+      where: { tenantId },
+      orderBy: { updatedAt: "desc" },
+      ...ventana(pagina),
+    });
+  }
+
+  async contarPorTenant(tenantId: string): Promise<number> {
+    return this.db.borrador.count({ where: { tenantId } });
   }
 
   async eliminar(id: string): Promise<void> {
@@ -784,11 +816,16 @@ export class DocumentoRecibidoRepositoryPrisma implements DocumentoRecibidoRepos
     return this.db.documentoRecibido.findUnique({ where: { tenantId_clave: { tenantId, clave } } });
   }
 
-  async listarPorTenant(tenantId: string): Promise<DocumentoRecibidoRecord[]> {
+  async listarPorTenant(tenantId: string, pagina?: Pagina): Promise<DocumentoRecibidoRecord[]> {
     return this.db.documentoRecibido.findMany({
       where: { tenantId },
       orderBy: { createdAt: "desc" },
+      ...ventana(pagina),
     });
+  }
+
+  async contarPorTenant(tenantId: string): Promise<number> {
+    return this.db.documentoRecibido.count({ where: { tenantId } });
   }
 
   async guardarMensajeReceptor(id: string, mr: MensajeReceptorGuardado): Promise<void> {
@@ -876,6 +913,43 @@ export class EmisorRepositoryPrisma implements EmisorRepository {
   }
 }
 
+export class SesionHaciendaRepositoryPrisma implements SesionHaciendaRepository {
+  constructor(private readonly db: PrismaClient) {}
+
+  async guardar(rec: SesionHaciendaRecord): Promise<void> {
+    const datos = {
+      tokensSellado: JSON.stringify(rec.tokensSellado),
+      refreshExpiresAt: rec.refreshExpiresAt,
+    };
+    await this.db.sesionHacienda.upsert({
+      where: { cedulaEmisor: rec.cedulaEmisor },
+      create: { cedulaEmisor: rec.cedulaEmisor, ...datos },
+      update: datos,
+    });
+  }
+
+  async buscar(cedulaEmisor: string): Promise<SesionHaciendaRecord | null> {
+    const row = await this.db.sesionHacienda.findUnique({ where: { cedulaEmisor } });
+    if (!row) return null;
+    return {
+      cedulaEmisor: row.cedulaEmisor,
+      tokensSellado: JSON.parse(row.tokensSellado) as SecretoSellado,
+      refreshExpiresAt: row.refreshExpiresAt,
+    };
+  }
+
+  async eliminar(cedulaEmisor: string): Promise<void> {
+    await this.db.sesionHacienda.deleteMany({ where: { cedulaEmisor } });
+  }
+
+  async purgarVencidas(ahora: Date): Promise<number> {
+    const { count } = await this.db.sesionHacienda.deleteMany({
+      where: { refreshExpiresAt: { lte: ahora } },
+    });
+    return count;
+  }
+}
+
 export class ComprobanteRepositoryPrisma implements ComprobanteRepository {
   constructor(private readonly db: PrismaClient) {}
 
@@ -887,6 +961,8 @@ export class ComprobanteRepositoryPrisma implements ComprobanteRepository {
         tipo: rec.tipo,
         consecutivo: rec.consecutivo,
         estado: rec.estado,
+        total: rec.total ?? null,
+        moneda: rec.moneda ?? null,
         xmlFirmado: rec.xmlFirmado ?? null,
         respuestaXml: rec.respuestaXml ?? null,
       },
@@ -909,6 +985,123 @@ export class ComprobanteRepositoryPrisma implements ComprobanteRepository {
   async listarPorEmisor(cedula: string): Promise<ComprobanteRecord[]> {
     const rows = await this.db.comprobante.findMany({ where: { cedulaEmisor: cedula } });
     return rows.map(aComprobanteRecord);
+  }
+
+  /** Columnas de listado: deja fuera los XML, que son el 99% del peso. */
+  private static readonly COLUMNAS_RESUMEN = {
+    clave: true,
+    cedulaEmisor: true,
+    tipo: true,
+    consecutivo: true,
+    estado: true,
+    createdAt: true,
+    updatedAt: true,
+  } as const;
+
+  private static rango(r?: RangoConsulta) {
+    if (!r?.desde && !r?.hasta) return {};
+    return { createdAt: { ...(r.desde ? { gte: r.desde } : {}), ...(r.hasta ? { lte: r.hasta } : {}) } };
+  }
+
+  async listarResumen(filtro: FiltroComprobantes): Promise<PaginaComprobantes> {
+    const where = {
+      cedulaEmisor: { in: filtro.cedulasEmisor },
+      ...ComprobanteRepositoryPrisma.rango(filtro),
+    };
+    // Un solo query por página en vez de uno por emisor, y el orden lo hace
+    // Postgres con el índice, no JavaScript sobre todo el histórico.
+    const [items, total] = await Promise.all([
+      this.db.comprobante.findMany({
+        where,
+        select: ComprobanteRepositoryPrisma.COLUMNAS_RESUMEN,
+        orderBy: { createdAt: "desc" },
+        take: filtro.limite,
+        skip: filtro.desplazamiento,
+      }),
+      this.db.comprobante.count({ where }),
+    ]);
+    return { items, total };
+  }
+
+  async listarNoFinalizados(limite: number, maxAntiguedadMs: number): Promise<ComprobanteResumen[]> {
+    return this.db.comprobante.findMany({
+      where: {
+        estado: { notIn: ESTADOS_FINALES },
+        createdAt: { gte: new Date(Date.now() - maxAntiguedadMs) },
+      },
+      select: ComprobanteRepositoryPrisma.COLUMNAS_RESUMEN,
+      orderBy: { createdAt: "asc" },
+      take: limite,
+    });
+  }
+
+  async agregarPorEmisor(
+    cedulasEmisor: string[],
+    rango?: RangoConsulta,
+  ): Promise<AgregadoComprobantes[]> {
+    // Postgres cuenta; devuelve una fila por combinación emisor/estado/tipo, no
+    // una por comprobante.
+    const filas = await this.db.comprobante.groupBy({
+      by: ["cedulaEmisor", "estado", "tipo"],
+      where: { cedulaEmisor: { in: cedulasEmisor }, ...ComprobanteRepositoryPrisma.rango(rango) },
+      _count: { _all: true },
+      _max: { createdAt: true },
+    });
+    return filas.map((f) => ({
+      cedulaEmisor: f.cedulaEmisor,
+      estado: f.estado,
+      tipo: f.tipo,
+      total: f._count._all,
+      ultima: f._max.createdAt ?? new Date(0),
+    }));
+  }
+
+  async serieDiaria(cedulasEmisor: string[], rango?: RangoConsulta): Promise<PuntoSerieDiaria[]> {
+    if (cedulasEmisor.length === 0) return [];
+    // `date_trunc` no tiene equivalente en la API de Prisma; SQL parametrizado.
+    const filas = await this.db.$queryRaw<Array<{ fecha: Date; total: bigint }>>`
+      SELECT date_trunc('day', "createdAt" AT TIME ZONE 'UTC') AS fecha, count(*) AS total
+      FROM "Comprobante"
+      WHERE "cedulaEmisor" = ANY(${cedulasEmisor})
+        AND (${rango?.desde ?? null}::timestamp IS NULL OR "createdAt" >= ${rango?.desde ?? null}::timestamp)
+        AND (${rango?.hasta ?? null}::timestamp IS NULL OR "createdAt" <= ${rango?.hasta ?? null}::timestamp)
+      GROUP BY 1
+      ORDER BY 1
+    `;
+    return filas.map((f) => ({
+      fecha: f.fecha.toISOString().slice(0, 10),
+      total: Number(f.total),
+    }));
+  }
+
+  async montosPorMoneda(
+    cedulasEmisor: string[],
+    rango?: RangoConsulta,
+  ): Promise<MontoAgregado[]> {
+    if (cedulasEmisor.length === 0) return [];
+    // Las notas de crédito restan; el agrupado por mes lo hace Postgres.
+    const filas = await this.db.$queryRaw<
+      Array<{ moneda: string; mes: Date; total: unknown; cantidad: bigint }>
+    >`
+      SELECT coalesce("moneda", 'CRC') AS moneda,
+             date_trunc('month', "createdAt" AT TIME ZONE 'UTC') AS mes,
+             sum(CASE WHEN "tipo" = 'NC' THEN -"total" ELSE "total" END) AS total,
+             count(*) AS cantidad
+      FROM "Comprobante"
+      WHERE "cedulaEmisor" = ANY(${cedulasEmisor})
+        AND "estado" = 'aceptado'
+        AND "total" IS NOT NULL
+        AND (${rango?.desde ?? null}::timestamp IS NULL OR "createdAt" >= ${rango?.desde ?? null}::timestamp)
+        AND (${rango?.hasta ?? null}::timestamp IS NULL OR "createdAt" <= ${rango?.hasta ?? null}::timestamp)
+      GROUP BY 1, 2
+      ORDER BY 2
+    `;
+    return filas.map((f) => ({
+      moneda: f.moneda,
+      mes: f.mes.toISOString().slice(0, 7),
+      total: Number(f.total),
+      cantidad: Number(f.cantidad),
+    }));
   }
 
   /**
@@ -986,6 +1179,9 @@ type ComprobanteRow = {
   tipo: string;
   consecutivo: string;
   estado: string;
+  /** Prisma devuelve Decimal; se normaliza a number al mapear. */
+  total?: { toString(): string } | null;
+  moneda?: string | null;
   xmlFirmado: string | null;
   respuestaXml: string | null;
   createdAt: Date;
@@ -1002,6 +1198,8 @@ function aComprobanteRecord(row: ComprobanteRow): ComprobanteRecord {
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
+  if (row.total != null) record.total = Number(row.total.toString());
+  if (row.moneda) record.moneda = row.moneda;
   if (row.xmlFirmado) record.xmlFirmado = row.xmlFirmado;
   if (row.respuestaXml) record.respuestaXml = row.respuestaXml;
   return record;

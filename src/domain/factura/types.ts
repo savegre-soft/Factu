@@ -13,7 +13,7 @@ export enum TipoIdentificacion {
   Nite = "04",
 }
 
-/** Condición de venta (catálogo de Hacienda; los más comunes). */
+/** Condición de venta (catálogo completo del XSD v4.4). */
 export enum CondicionVenta {
   Contado = "01",
   Credito = "02",
@@ -21,6 +21,14 @@ export enum CondicionVenta {
   Apartado = "04",
   ArrendamientoOpcionCompra = "05",
   ArrendamientoFuncionFinanciera = "06",
+  CobroFavorTercero = "07",
+  ServiciosEstadoCredito = "08",
+  /** Venta a crédito en IVA hasta 90 días (artículo 27, LIVA). */
+  CreditoIva90Dias = "10",
+  MercanciaNoNacionalizada = "12",
+  BienesUsadosNoContribuyente = "13",
+  ArrendamientoOperativo = "14",
+  ArrendamientoFinanciero = "15",
   Otros = "99",
 }
 
@@ -33,10 +41,19 @@ export enum TipoMedioPago {
   Otros = "99",
 }
 
-/** Código de impuesto (subconjunto habitual). */
+/** Código de impuesto (catálogo completo del XSD v4.4). */
 export enum CodigoImpuesto {
   IVA = "01",
   SelectivoConsumo = "02",
+  Combustibles = "03",
+  BebidasAlcoholicas = "04",
+  BebidasEnvasadasYJabones = "05",
+  Tabaco = "06",
+  /** IVA cálculo especial. */
+  IvaCalculoEspecial = "07",
+  /** IVA régimen de bienes usados (factor). */
+  IvaBienesUsados = "08",
+  Cemento = "12",
   Otros = "99",
 }
 
@@ -154,26 +171,51 @@ export interface Moneda {
   tipoCambio?: number;
 }
 
-/** Tipo del documento referenciado (para notas de crédito/débito). */
+/**
+ * Tipo del documento referenciado (catálogo completo del XSD v4.4).
+ *
+ * OJO: el "02" es la NOTA DE DÉBITO electrónica. La nota de despacho es el "05".
+ * Estaban intercambiados y se emitían referencias con otro significado.
+ */
 export enum TipoDocReferencia {
   FacturaElectronica = "01",
-  NotaDespachoElectronica = "02",
+  NotaDebitoElectronica = "02",
+  NotaCreditoElectronica = "03",
   TiqueteElectronico = "04",
   NotaDespacho = "05",
+  Contrato = "06",
+  Procedimiento = "07",
   ComprobanteContingencia = "08",
+  DevolucionMercaderia = "09",
+  ComprobanteRechazadoPorHacienda = "10",
+  SustituyeFacturaRechazadaPorReceptor = "11",
+  SustituyeFacturaExportacion = "12",
+  FacturacionMesVencido = "13",
+  ComprobanteRegimenEspecial = "14",
+  SustituyeFacturaCompra = "15",
+  ProveedorNoDomiciliado = "16",
+  NotaCreditoAFacturaCompra = "17",
+  NotaDebitoAFacturaCompra = "18",
   Otro = "99",
 }
 
-/** Razón/código de la referencia. */
+/** Razón/código de la referencia (catálogo completo del XSD v4.4). */
 export enum CodigoReferencia {
   /** Anula el documento de referencia. */
   AnulaDocumento = "01",
-  /** Corrige el monto. */
-  CorrigeMonto = "02",
+  /** Corrige el TEXTO del documento de referencia (no el monto). */
+  CorrigeTexto = "02",
   /** Referencia a otro documento. */
   ReferenciaOtroDocumento = "04",
   /** Sustituye comprobante provisional por contingencia. */
   SustituyeComprobanteContingencia = "05",
+  DevolucionMercancia = "06",
+  SustituyeComprobanteElectronico = "07",
+  FacturaEndosada = "08",
+  NotaCreditoFinanciera = "09",
+  NotaDebitoFinanciera = "10",
+  ProveedorNoDomiciliado = "11",
+  CreditoPorExoneracionPosterior = "12",
   Otros = "99",
 }
 

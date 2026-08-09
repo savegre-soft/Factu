@@ -24,6 +24,15 @@ const schema = z.object({
    * obligatorio en v4.4). Si se deja vacío, se usa la cédula del propio emisor.
    */
   PROVEEDOR_SISTEMAS: z.string().max(20).optional(),
+  /**
+   * Publicar la documentación interactiva (/docs y /swagger). Expone el mapa
+   * completo de la API sin autenticación, así que en producción viene apagada.
+   */
+  DOCS_PUBLICAS: z
+    .enum(["true", "false"])
+    .optional()
+    .transform((v) => (v === undefined ? undefined : v === "true")),
+
   /** Backend de persistencia: "memoria" (por defecto) o "prisma". */
   PERSISTENCIA: z.enum(["memoria", "prisma"]).default("memoria"),
   /** Revisar automáticamente los buzones de correo en busca de XML. */
@@ -33,6 +42,17 @@ const schema = z.object({
     .transform((v) => v === "true"),
   /** Cada cuántos minutos revisar los buzones (mínimo 1). */
   CORREO_POLL_MINUTOS: z.coerce.number().int().min(1).default(5),
+
+  /**
+   * Re-consultar en Hacienda los comprobantes que quedaron sin veredicto. Sin
+   * esto, un comprobante cuyo estado tarde más que el polling de la emisión
+   * (~15 s) se queda en "recibido" para siempre.
+   */
+  RECONSULTA_ENABLED: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((v) => v === "true"),
+  RECONSULTA_MINUTOS: z.coerce.number().int().min(1).default(10),
 
   // --- Entrega de comprobantes al cliente (correo saliente SMTP) ---
   /** Enviar el comprobante al cliente por correo tras la aceptación. */
