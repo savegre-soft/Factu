@@ -139,6 +139,28 @@ export async function reciboPagoRoutes(app: FastifyInstance): Promise<void> {
         entregado = true;
         const estado = await receptionClient.esperarEstadoFinal(token, clave);
 
+        // Se guarda como un comprobante más: si no, el recibo no aparecería en
+        // los listados, ni en las estadísticas, ni en la re-consulta de estado.
+        const totalCobrado = datos.lineas.reduce(
+          (a, l) => a + l.montoTotal + (l.impuestos ?? []).reduce((b, i) => b + i.monto, 0),
+          0,
+        );
+        await comprobanteRepository
+          .crear({
+            clave,
+            cedulaEmisor: datos.cedulaEmisor,
+            tipo: SERIE_REP,
+            consecutivo,
+            estado: estado.estado,
+            total: totalCobrado,
+            moneda: datos.moneda?.codigo ?? "CRC",
+            xmlFirmado,
+            respuestaXml: estado.respuestaXml,
+          })
+          .catch((e) =>
+            request.log.error({ err: e, clave }, "Recibo emitido en Hacienda pero NO persistido"),
+          );
+
         registrarAuditoria({
           tenantId: request.user.tenantId,
           actor: actorDesde(request.user, request.ip),
