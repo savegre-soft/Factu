@@ -39,6 +39,14 @@ services:
       HACIENDA_IDP_URL: https://idp.comprobanteselectronicos.go.cr/auth/realms/rut-stag/protocol/openid-connect/token
       HACIENDA_API_URL: https://api-sandbox.comprobanteselectronicos.go.cr/recepcion/v1
       HACIENDA_CLIENT_ID: api-stag
+      # Política de firma XAdES-EPES. Sin esto la firma sale XAdES-BES y Hacienda
+      # la rechaza: "La firma del documento no tiene el Policy Id". La URL apunta a
+      # la resolución DGT-R-48-2016 y el HASH es su digest SHA-256 en base64.
+      HACIENDA_POLICY_URL: https://www.hacienda.go.cr/docs/Resolucion_Comprobantes_Electronicos_DGT-R-48-2016_v4.1.pdf
+      HACIENDA_POLICY_HASH: vPjYEG5pdxOi+6DB29+KqF3I4VOcMEaixzE3d2iUiJk=
+      # Cédula del proveedor del sistema de facturación (nodo ProveedorSistemas,
+      # obligatorio en v4.4). Vacío = se usa la cédula del propio emisor.
+      PROVEEDOR_SISTEMAS: ""
       # Entrega del comprobante al cliente por correo (rellena el SMTP para activarla).
       ENTREGA_ENABLED: "true"
       SMTP_HOST: ""

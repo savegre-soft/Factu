@@ -157,6 +157,9 @@ function addLinea(
       i.ele("Tarifa").txt(imp.tarifa.toFixed(2));
       i.ele("Monto").txt(money(imp.monto));
     }
+    // Obligatorio en v4.4, va entre Impuesto e ImpuestoNeto. En una venta normal
+    // (sin impuesto asumido por el emisor / cobrado a nivel de fábrica) es 0.
+    node.ele("ImpuestoAsumidoEmisorFabrica").txt(money(0));
     node.ele("ImpuestoNeto").txt(money(calc.impuestoNeto));
   }
 
@@ -244,6 +247,11 @@ export function generarComprobanteXml(
   });
 
   root.ele("Clave").txt(factura.clave);
+  // ProveedorSistemas es obligatorio en v4.4 y va justo tras Clave. Si no se
+  // especifica, el emisor es su propio proveedor: se usa su cédula.
+  root
+    .ele("ProveedorSistemas")
+    .txt(factura.proveedorSistemas?.trim() || factura.emisor.identificacion.numero);
   root.ele("CodigoActividadEmisor").txt(factura.codigoActividadEmisor);
   if (factura.codigoActividadReceptor)
     root.ele("CodigoActividadReceptor").txt(factura.codigoActividadReceptor);

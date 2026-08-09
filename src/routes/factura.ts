@@ -7,6 +7,7 @@ import {
   SituacionComprobante,
 } from "../domain/clave/clave.js";
 import { generarFacturaXml } from "../domain/factura/facturaXml.js";
+import { env } from "../config/env.js";
 import {
   CondicionVenta,
   TipoIdentificacion,
@@ -116,6 +117,7 @@ export async function facturaRoutes(app: FastifyInstance): Promise<void> {
 
     const input: FacturaInput = {
       clave,
+      proveedorSistemas: env.PROVEEDOR_SISTEMAS,
       numeroConsecutivo: consecutivo,
       codigoActividadEmisor: b.codigoActividadEmisor,
       codigoActividadReceptor: b.codigoActividadReceptor,

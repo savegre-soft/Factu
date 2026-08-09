@@ -14,6 +14,7 @@ import { notificarEvento } from "../services/notificaciones/index.js";
 import { registrarAuditoria, actorDesde } from "../services/auditoria/index.js";
 import { TipoDocumento } from "../domain/factura/facturaXml.js";
 import { validarComprobante } from "../domain/validacion/validacion.js";
+import { env } from "../config/env.js";
 import {
   comprobanteEnviarSchema,
   comprobanteGetSchema,
@@ -63,6 +64,9 @@ export async function comprobanteRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(400).send({ error: "Entrada inválida", detalles: parsed.error.issues });
     }
     const datos = parsed.data as DatosFactura;
+    // ProveedorSistemas (v4.4): usa el configurado en la plataforma; si no hay,
+    // el generador cae en la cédula del propio emisor.
+    if (!datos.proveedorSistemas) datos.proveedorSistemas = env.PROVEEDOR_SISTEMAS;
 
     // El emisor debe estar registrado y pertenecer al tenant del usuario.
     if (!(await emisorDelTenant(request, reply, datos.cedulaEmisor))) return;

@@ -19,6 +19,11 @@ const schema = z.object({
   HACIENDA_POLICY_URL: z.string().url().optional(),
   /** Digest SHA-256 (base64) del documento de la política de firma. */
   HACIENDA_POLICY_HASH: z.string().optional(),
+  /**
+   * Cédula del proveedor del sistema de facturación (nodo ProveedorSistemas,
+   * obligatorio en v4.4). Si se deja vacío, se usa la cédula del propio emisor.
+   */
+  PROVEEDOR_SISTEMAS: z.string().max(20).optional(),
   /** Backend de persistencia: "memoria" (por defecto) o "prisma". */
   PERSISTENCIA: z.enum(["memoria", "prisma"]).default("memoria"),
   /** Revisar automáticamente los buzones de correo en busca de XML. */

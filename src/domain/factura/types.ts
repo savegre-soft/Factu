@@ -168,6 +168,11 @@ export interface InformacionReferencia {
 export interface FacturaInput {
   /** Clave numérica de 50 dígitos (generada en el hito 1). */
   clave: string;
+  /**
+   * Cédula del proveedor del sistema de facturación (nodo ProveedorSistemas,
+   * obligatorio en v4.4). Si se omite, el generador usa la cédula del emisor.
+   */
+  proveedorSistemas?: string;
   /** Consecutivo de 20 dígitos (generado en el hito 1). */
   numeroConsecutivo: string;
   /** Código de actividad económica del emisor (6 dígitos). */

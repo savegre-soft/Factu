@@ -71,6 +71,18 @@ describe("generarFacturaXml", () => {
     expect(fe.CodigoActividadEmisor).toBe("620100");
   });
 
+  it("incluye ProveedorSistemas: usa el valor dado o cae en la cédula del emisor", () => {
+    // Sin especificar: el emisor es su propio proveedor.
+    const feFallback = parse(generarFacturaXml(facturaBase())).FacturaElectronica;
+    expect(feFallback.ProveedorSistemas).toBe("3101123456");
+
+    // Especificado: se usa tal cual (cédula del proveedor del software).
+    const feExplicito = parse(
+      generarFacturaXml({ ...facturaBase(), proveedorSistemas: "3101999999" }),
+    ).FacturaElectronica;
+    expect(feExplicito.ProveedorSistemas).toBe("3101999999");
+  });
+
   it("refleja emisor y receptor", () => {
     const fe = parse(generarFacturaXml(facturaBase())).FacturaElectronica;
     expect(fe.Emisor.Nombre).toBe("Empresa X S.A.");
@@ -84,6 +96,17 @@ describe("generarFacturaXml", () => {
     expect(linea.MontoTotal).toBe("2000.00000");
     expect(linea.Impuesto.Monto).toBe("260.00000");
     expect(linea.MontoTotalLinea).toBe("2260.00000");
+
+    // v4.4: ImpuestoAsumidoEmisorFabrica es obligatorio y va entre Impuesto e ImpuestoNeto.
+    expect(linea.ImpuestoAsumidoEmisorFabrica).toBe("0.00000");
+    expect(linea.ImpuestoNeto).toBe("260.00000");
+    const ordenLinea = Object.keys(linea);
+    expect(ordenLinea.indexOf("Impuesto")).toBeLessThan(
+      ordenLinea.indexOf("ImpuestoAsumidoEmisorFabrica"),
+    );
+    expect(ordenLinea.indexOf("ImpuestoAsumidoEmisorFabrica")).toBeLessThan(
+      ordenLinea.indexOf("ImpuestoNeto"),
+    );
 
     const resumen = fe.ResumenFactura;
     expect(resumen.TotalGravado).toBe("2000.00000");
