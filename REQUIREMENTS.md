@@ -1,0 +1,141 @@
+# Requerimientos — Factu
+
+Estado real del código a **2026-07-29**. Este documento se actualiza en la misma
+sesión en que se completa cada tarea/feature/fix (ver reglas en `CLAUDE.md`).
+
+Leyenda: ✅ Implementado · 🟡 Parcial · ⬜ Pendiente
+
+## A. Autenticación y Control de Acceso
+
+| ID | Requerimiento | Descripción | Estado | Notas |
+|---|---|---|---|---|
+| A1 | Registro de organización | `POST /auth/registro` crea el tenant + usuario admin y devuelve JWT. | ✅ Implementado | `src/routes/auth.ts:94`. |
+| A2 | Login de usuario | `POST /auth/login` valida credenciales (scrypt) y devuelve JWT. | ✅ Implementado | `src/routes/auth.ts:112`. |
+| A3 | Multi-tenant | Datos aislados por `tenantId` en todos los modelos (usuarios, emisores, comprobantes, etc.). | ✅ Implementado | `prisma/schema.prisma`, guards en `src/routes/_guards.ts`. |
+| A4 | Roles y permisos | Roles `admin` / `facturador` / `lector` con permisos atómicos (gestionar usuarios/emisores/integraciones/notificaciones, emitir, leer). | ✅ Implementado | `src/domain/auth/roles.ts`. |
+| A5 | Gestión de usuarios | Admin crea/lista/edita rol/cambia password/elimina usuarios de su tenant. | ✅ Implementado | `src/routes/auth.ts` (`/auth/usuarios*`). |
+| A6 | Login social (OAuth) | Vincula identidad Google/Microsoft a un usuario; login por proveedor; listar/desvincular identidades. | ✅ Implementado | `src/routes/auth.ts` (`/auth/oauth/*`), `src/services/cuentas/oauthProviders.ts`. |
+| A7 | Recuperar contraseña | Código de un solo uso enviado por correo de la plataforma, con expiración. | ✅ Implementado | `src/services/cuentas/passwordResetService.ts`, `/auth/password/*`. |
+| A8 | API Keys (integraciones) | Credenciales de servicio con rol efectivo y alcance por emisor, para emitir desde sistemas externos (ERP, etc.). | ✅ Implementado | `src/services/apiKeys/apiKeyService.ts`, `/api-keys/*`. |
+| A9 | Perfil propio | `GET/PATCH /auth/yo`, cambio de password propio. | ✅ Implementado | `src/routes/auth.ts:262`. |
+
+## B. Emisores y Certificados
+
+| ID | Requerimiento | Descripción | Estado | Notas |
+|---|---|---|---|---|
+| B1 | Alta/edición de emisor | Registrar cédula, nombre y datos fiscales (actividad, ubicación, correo). | ✅ Implementado | `src/routes/emisor.ts`. |
+| B2 | Certificado .p12 cifrado | Sube el `.p12` en base64 + PIN; se valida y se guarda cifrado en reposo (AES-256-GCM). | ✅ Implementado | `src/services/emisor/certStore.ts`, `src/infra/crypto/secretBox.ts`. |
+| B3 | Sesión IDP Hacienda | Login del emisor contra el IDP, obtención/renovación automática de tokens, logout. | ✅ Implementado | `src/services/auth/haciendaAuth.ts`, `src/services/auth/tokenStore.ts`, `/hacienda/*`. |
+| B4 | Consulta de ambiente | Expone (solo lectura) si está en `stag`/`prod`, URLs públicas y si está "listo para producción". | ✅ Implementado | `src/routes/ambiente.ts`, `src/config/hacienda.ts`. |
+| B5 | Certificado real vs. demo | Si el emisor no tiene `.p12` cargado, firma con uno autofirmado de prueba y lo marca (`certificadoDemo: true`) — Hacienda solo acepta el real. | ✅ Implementado | Comportamiento intencional para desarrollo, documentado en `docs/conexion-hacienda.md`. |
+| B6 | Credenciales oficiales de producción | URLs oficiales del IDP/recepción de Hacienda (stag y prod) confirmadas y probadas contra el sandbox real. | ⬜ Pendiente | Las `.env.example` son de referencia; hay que confirmarlas con la documentación técnica oficial de Hacienda antes de ir a producción. |
+
+## C. Clientes / Receptores
+
+| ID | Requerimiento | Descripción | Estado | Notas |
+|---|---|---|---|---|
+| C1 | Autocompletar receptor | Guarda cada receptor usado en una factura (por tenant + número de identificación) para autocompletar en la siguiente emisión. | ✅ Implementado | Modelo `Cliente` en `prisma/schema.prisma`, `GET /clientes`, `GET /clientes/:numero` en `src/routes/emisor.ts:119`. |
+
+## D. Emisión de Comprobantes Electrónicos
+
+| ID | Requerimiento | Descripción | Estado | Notas |
+|---|---|---|---|---|
+| D1 | Clave y consecutivo | Genera la clave numérica de 50 dígitos y el consecutivo de 20. | ✅ Implementado | `src/domain/clave/clave.ts`, `POST /clave`. |
+| D2 | XML v4.4 | Genera el XML para los 5 tipos de comprobante (factura, tiquete, NC, ND, mensaje receptor). | ✅ Implementado | `src/domain/factura/facturaXml.ts`, `src/domain/mensajeReceptor/mensajeReceptor.ts`. |
+| D3 | Validación de negocio previa | Reglas que fallan antes de contactar a Hacienda: formatos, receptor obligatorio (salvo tiquete), plazo de crédito, tipo de cambio, CABYS de 13 dígitos, tarifas 0–100, referencias en notas. | ✅ Implementado | `src/domain/validacion/validacion.ts`. |
+| D4 | Firma XAdES | Firma enveloped XAdES-BES, o XAdES-EPES si hay política de firma configurada. | 🟡 Parcial | `src/services/firma/xadesSigner.ts`. BES funciona de punta a punta; EPES requiere `HACIENDA_POLICY_URL`/`HACIENDA_POLICY_HASH` **oficiales** de la resolución vigente (hoy sin configurar). |
+| D5 | Envío y estado | Envía a recepción de Hacienda y consulta el estado (aceptado/rechazado/procesando) con polling. | ✅ Implementado | `src/services/hacienda/emision.ts`, `src/services/hacienda/reception.ts`. Probado contra sandbox propio (mock), falta prueba end-to-end contra el sandbox real de Hacienda (ver B6). |
+| D6 | Listado/consulta de comprobantes | Lista comprobantes emitidos (filtrable) y consulta por clave. | ✅ Implementado | `GET /comprobantes`, `GET /comprobante/:clave` en `src/routes/comprobante.ts`. |
+| D7 | Borradores | Guardar el estado del formulario de emisión (JSON) y reanudarlo antes de emitir. | ✅ Implementado | `src/services/borradores/borradorService.ts`, `/borradores/*`. |
+| D8 | Validación contra XSD oficial | Validar el XML generado contra el esquema XSD v4.4 publicado por Hacienda. | ⬜ Pendiente | Hoy solo se valida la lógica de negocio (D3), no la estructura XML contra el esquema oficial. |
+| D9 | Gestión de consecutivos por emisor | Autogenerar y controlar el consecutivo de cada emisor/tipo de documento en el servidor. | ⬜ Pendiente | Hoy el consecutivo lo envía el cliente en el body de `/comprobante/:tipo/enviar`; no hay contador persistido por emisor. |
+
+## E. Documentos Recibidos / Mensaje Receptor
+
+| ID | Requerimiento | Descripción | Estado | Notas |
+|---|---|---|---|---|
+| E1 | Carga manual de documento recibido | Registrar manualmente un comprobante que la empresa recibió (XML + metadatos). | ✅ Implementado | `POST /recibidos`, `src/services/documentosRecibidos/documentosRecibidosService.ts`. |
+| E2 | Recepción automática por correo | Buzón IMAP configurable por tenant; poller que extrae los XML adjuntos/entrantes. | ✅ Implementado | `src/services/correo/correoService.ts`, `src/services/correo/poller.ts`, `/correo/*`. |
+| E3 | Generar Mensaje Receptor | A partir de un documento recibido, genera la respuesta de aceptación/rechazo/aceptación parcial. | ✅ Implementado | `POST /recibidos/:id/mensaje-receptor`, `POST /mensaje-receptor/xml`. |
+| E4 | Listado/consulta de recibidos | Lista y consulta documentos recibidos, filtra por emisor/receptor. | ✅ Implementado | `GET /recibidos`, `GET /recibidos/:id`. |
+
+## F. Entrega al Cliente
+
+| ID | Requerimiento | Descripción | Estado | Notas |
+|---|---|---|---|---|
+| F1 | SMTP saliente configurable | Configuración de correo saliente por tenant (host, puerto, TLS/STARTTLS, remitente). | ✅ Implementado | `src/services/entrega/smtpConfigService.ts`, `/correo-salida/*`. |
+| F2 | PDF del comprobante | Genera el PDF (representación impresa) del comprobante emitido. | ✅ Implementado | `src/services/entrega/comprobantePdf.ts` (pdfkit). |
+| F3 | Envío al cliente + reintentos | Envía el comprobante (XML + PDF) por correo al receptor, con cola de reintentos. | ✅ Implementado | `src/services/entrega/entregaService.ts`, `src/services/entrega/poller.ts`. |
+| F4 | Historial y reenvío | Historial de envíos por comprobante (auditable) y reenvío manual. | ✅ Implementado | `POST /comprobante/:clave/reenviar`, `GET /comprobante/:clave/envios`. |
+
+## G. Estadísticas
+
+| ID | Requerimiento | Descripción | Estado | Notas |
+|---|---|---|---|---|
+| G1 | Resumen general | Totales agregados (emitidos, aceptados, rechazados, montos). | ✅ Implementado | `GET /estadisticas/resumen`. |
+| G2 | Desglose por emisor | Estadísticas agrupadas por emisor del tenant. | ✅ Implementado | `GET /estadisticas/emisores`. |
+| G3 | Serie temporal | Serie de emisión en el tiempo (para gráficos). | ✅ Implementado | `GET /estadisticas/serie`. |
+
+## H. Webhooks (integraciones salientes)
+
+| ID | Requerimiento | Descripción | Estado | Notas |
+|---|---|---|---|---|
+| H1 | CRUD de webhooks | Alta/edición/baja de endpoints suscritos a eventos (ej. `comprobante.aceptado`). | ✅ Implementado | `src/routes/webhooks.ts`, `src/services/webhooks/webhookService.ts`. |
+| H2 | Firma HMAC | El payload saliente se firma con el secreto configurado del webhook. | ✅ Implementado | Secreto cifrado en reposo (`secretSellado`), firmado al entregar. |
+| H3 | Prueba y reintentos | Disparo manual de prueba y reintentos con historial de entregas. | ✅ Implementado | `POST /webhooks/:id/probar`, `GET /webhooks/:id/entregas`, `src/services/webhooks/poller.ts`. |
+
+## I. Notificaciones
+
+| ID | Requerimiento | Descripción | Estado | Notas |
+|---|---|---|---|---|
+| I1 | Canales soportados | SMS (Twilio), WhatsApp Cloud, Slack, Teams, Bitrix24. | ✅ Implementado | `src/services/notificaciones/providers/*`, patrón Strategy (`NotificationProvider`). |
+| I2 | CRUD de canales + prueba | Alta/edición/baja de canal con config cifrada, suscripción a eventos, envío de prueba. | ✅ Implementado | `src/routes/notificaciones.ts`. |
+| I3 | Historial y reintentos | Cola de mensajes con reintentos y backoff, historial por canal. | ✅ Implementado | `src/services/notificaciones/retryPolicy.ts`, `src/services/notificaciones/poller.ts`. |
+
+## J. Auditoría y Observabilidad
+
+| ID | Requerimiento | Descripción | Estado | Notas |
+|---|---|---|---|---|
+| J1 | Registro de auditoría | Acciones de negocio atribuibles a un usuario/API key (login, emitir, crear webhook, etc.). | ✅ Implementado | `src/services/auditoria/index.ts`, `GET /auditoria` (solo admin). |
+| J2 | Logs técnicos | Registro de eventos del sistema (pollers, entregas, errores no controlados) con nivel y origen. | ✅ Implementado | `src/services/logs/index.ts`, `GET /logs` (solo admin), hook `onError` en `src/server.ts`. |
+
+## K. Colaboración interna
+
+| ID | Requerimiento | Descripción | Estado | Notas |
+|---|---|---|---|---|
+| K1 | Chat interno | Mensajería 1:1 entre usuarios del mismo tenant, contactos, contador de no leídos. | ✅ Implementado | `src/services/chat/chatService.ts`, `/chat/*`. |
+
+---
+
+## Orden de trabajo sugerido
+
+Prioridad por dependencia real de datos/acceso, no alfabética:
+
+1. **B6 — Confirmar credenciales/URLs oficiales de Hacienda (IDP + recepción, stag y prod).**
+   Es la dependencia raíz: sin esto no se puede probar D5 (envío/estado) contra el sandbox
+   real, ni tiene sentido configurar D4 (política EPES) con datos reales.
+2. **D4 — Cargar `HACIENDA_POLICY_URL`/`HACIENDA_POLICY_HASH` oficiales (XAdES-EPES).**
+   Depende de tener acceso oficial (paso 1). El código ya soporta EPES; solo falta el dato.
+3. **D8 — Validación contra el XSD oficial v4.4.**
+   No depende de credenciales de Hacienda — se puede desarrollar en paralelo con el XSD
+   público, pero conviene antes de las pruebas end-to-end reales para no gastar intentos
+   contra el sandbox con XML mal formado.
+4. **D9 — Gestión de consecutivos por emisor en el servidor.**
+   Hoy el cliente controla el consecutivo; antes de dar de alta emisores reales en
+   producción (múltiples usuarios emitiendo en paralelo) hace falta un contador atómico
+   por emisor/tipo de documento para evitar colisiones.
+
+## Notas generales
+
+- **Persistencia dual**: todo el dominio corre igual sobre backend en memoria
+  (`PERSISTENCIA=memoria`, para desarrollo/tests) o Prisma/PostgreSQL
+  (`PERSISTENCIA=prisma`). Cualquier feature nueva debe implementarse en ambos repos
+  (`src/infra/repos/memory.ts` y `src/infra/repos/prisma.ts`) para no romper los tests
+  unitarios que corren en memoria.
+- **Secretos cifrados en reposo**: `.p12`, contraseñas SMTP/IMAP, secretos de webhook y
+  config de canales de notificación se guardan como `SecretoSellado` (JSON cifrado
+  AES-256-GCM con `FACTU_MASTER_KEY`). Nunca se devuelven en claro por la API.
+- **`FACTU_MASTER_KEY` y `JWT_SECRET`** tienen valores inseguros por defecto solo en
+  desarrollo; en producción son obligatorios (el arranque falla si faltan).
+- El dominio (`src/domain/`) es lógica pura sin infraestructura — 100% testeable sin red
+  ni certificados reales; los servicios (`src/services/`) inyectan sus dependencias.
