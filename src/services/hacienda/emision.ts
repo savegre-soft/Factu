@@ -28,6 +28,8 @@ const TIPO_CONSECUTIVO: Record<TipoDocumento, TipoComprobante> = {
   [TipoDocumento.TiqueteElectronico]: TipoComprobante.TiqueteElectronico,
   [TipoDocumento.NotaCredito]: TipoComprobante.NotaCredito,
   [TipoDocumento.NotaDebito]: TipoComprobante.NotaDebito,
+  [TipoDocumento.FacturaCompra]: TipoComprobante.FacturaCompra,
+  [TipoDocumento.FacturaExportacion]: TipoComprobante.FacturaExportacion,
 };
 import type { Certificado } from "../firma/certificado.js";
 import { construirEnvelope } from "./envelope.js";
@@ -39,6 +41,11 @@ export type DatosFactura = Omit<FacturaInput, "clave" | "numeroConsecutivo"> & {
   sucursal?: number;
   terminal?: number;
   consecutivo: number;
+  /**
+   * Situación del comprobante: normal, contingencia (Hacienda caída) o sin
+   * internet. Va en la clave y le dice a Hacienda por qué llega tarde.
+   */
+  situacion?: SituacionComprobante;
 };
 
 export interface EmisionDeps {
@@ -85,7 +92,7 @@ export async function emitirComprobante(
     terminal: datos.terminal ?? 1,
     tipo: TIPO_CONSECUTIVO[tipo],
     consecutivo: datos.consecutivo,
-    situacion: SituacionComprobante.Normal,
+    situacion: datos.situacion ?? SituacionComprobante.Normal,
     fecha,
   });
 

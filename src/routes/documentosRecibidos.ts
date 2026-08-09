@@ -14,12 +14,14 @@ import { Permiso } from "../domain/auth/roles.js";
 import {
   recibidoCrearSchema,
   recibidoListarSchema,
+  recibidoEnviarMrSchema,
   recibidoGetSchema,
   recibidoEliminarSchema,
   recibidoMensajeReceptorSchema,
 } from "../plugins/schemas.js";
 import type { DocumentoRecibidoRecord } from "../infra/repos/types.js";
 import { paginaSchema } from "./_pagina.js";
+import { SinSesionHaciendaError } from "../services/auth/index.js";
 
 const crearSchema = z.object({ xml: z.string().min(1) });
 const mrSchema = z.object({
@@ -46,13 +48,16 @@ function resumen(d: DocumentoRecibidoRecord) {
     mrRespuesta: d.mrRespuesta,
     mrConsecutivo: d.mrConsecutivo,
     mrGeneradoAt: d.mrGeneradoAt,
+    /** Estado ante Hacienda; null mientras esté generado pero sin enviar. */
+    mrEstado: d.mrEstado,
+    mrEnviadoAt: d.mrEnviadoAt,
     createdAt: d.createdAt,
   };
 }
 
 /** Detalle: incluye el XML original y el del mensaje receptor. */
 function detalle(d: DocumentoRecibidoRecord) {
-  return { ...resumen(d), xml: d.xml, mrXml: d.mrXml };
+  return { ...resumen(d), xml: d.xml, mrXml: d.mrXml, mrRespuestaXml: d.mrRespuestaXml };
 }
 
 export async function documentosRecibidosRoutes(app: FastifyInstance): Promise<void> {
@@ -101,6 +106,35 @@ export async function documentosRecibidosRoutes(app: FastifyInstance): Promise<v
       const doc = await documentosRecibidosService.obtener(request.user.tenantId, id);
       if (!doc) return reply.status(404).send({ error: "Documento no encontrado" });
       return detalle(doc);
+    },
+  );
+
+  /**
+   * Envía a Hacienda el mensaje receptor ya generado. Responder es obligación
+   * del receptor y tiene plazo: generarlo y no mandarlo no cumple nada.
+   */
+  app.post(
+    "/recibidos/:id/mensaje-receptor/enviar",
+    { schema: recibidoEnviarMrSchema, preHandler: app.requierePermiso(Permiso.Emitir) },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      try {
+        const doc = await documentosRecibidosService.enviarMensajeReceptor(
+          request.user.tenantId,
+          id,
+        );
+        if (!doc) return reply.status(404).send({ error: "Documento no encontrado" });
+        return detalle(doc);
+      } catch (err) {
+        if (err instanceof SinSesionHaciendaError) {
+          return reply.status(401).send({ error: "Sin sesión con Hacienda", detalle: err.message });
+        }
+        request.log.error(err);
+        return reply.status(502).send({
+          error: "No se pudo enviar el mensaje receptor",
+          detalle: (err as Error).message,
+        });
+      }
     },
   );
 

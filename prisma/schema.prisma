@@ -299,8 +299,16 @@ model DocumentoRecibido {
   /// Mensaje receptor generado (si ya se respondió).
   mrRespuesta        String?
   mrConsecutivo      String?
+  /// XML del mensaje receptor SIN firmar (el que se genera).
   mrXml              String?
   mrGeneradoAt       DateTime?
+  /// Estado del mensaje receptor ante Hacienda: aceptado, rechazado, recibido…
+  /// Null mientras solo esté generado y no enviado.
+  mrEstado           String?
+  /// XML firmado que se envió, y la respuesta de Hacienda.
+  mrXmlFirmado       String?
+  mrRespuestaXml     String?
+  mrEnviadoAt        DateTime?
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 

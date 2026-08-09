@@ -48,6 +48,7 @@ import type {
   EmisorRecord,
   EmisorRepository,
   MensajeReceptorGuardado,
+  MensajeReceptorEnviado,
   NuevaApiKey,
   NuevoComprobante,
   NuevoDocumentoRecibido,
@@ -836,6 +837,18 @@ export class DocumentoRecibidoRepositoryPrisma implements DocumentoRecibidoRepos
         mrConsecutivo: mr.consecutivo,
         mrXml: mr.xml,
         mrGeneradoAt: new Date(),
+      },
+    });
+  }
+
+  async guardarEnvioMensajeReceptor(id: string, envio: MensajeReceptorEnviado): Promise<void> {
+    await this.db.documentoRecibido.update({
+      where: { id },
+      data: {
+        mrEstado: envio.estado,
+        mrXmlFirmado: envio.xmlFirmado,
+        mrRespuestaXml: envio.respuestaXml ?? null,
+        mrEnviadoAt: new Date(),
       },
     });
   }

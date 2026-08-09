@@ -136,11 +136,53 @@ export interface Descuento {
   naturaleza: string;
 }
 
+/** Tipo de documento que respalda la exoneración (catálogo v4.4, nota 12). */
+export enum TipoExoneracion {
+  ComprasAutorizadasDGT = "01",
+  VentasExentasDiplomaticos = "02",
+  AutorizadoPorLeyEspecial = "03",
+  ExencionesDGHAutorizacionLocal = "04",
+  ExencionesDGHTransitorioV = "05",
+  ServiciosTuristicosICT = "06",
+  TransitorioXVII = "07",
+  ZonaFranca = "08",
+  ServiciosComplementariosExportacion = "09",
+  CorporacionesMunicipales = "10",
+  ExencionesDGHAutorizacionImpuesto = "11",
+  Otros = "99",
+}
+
+/**
+ * Exoneración aplicada a un impuesto de la línea.
+ *
+ * La usa quien le factura a una zona franca, a una institución exonerada o a un
+ * diplomático: el impuesto se calcula y luego se rebaja en el porcentaje
+ * exonerado, y hay que decir con qué documento se respalda.
+ */
+export interface Exoneracion {
+  tipoDocumento: TipoExoneracion | string;
+  /** Descripción libre; obligatoria si el tipo es "99". */
+  tipoDocumentoOtro?: string;
+  /** Número del documento de exoneración (3 a 40 caracteres). */
+  numeroDocumento: string;
+  articulo?: number;
+  inciso?: number;
+  /** Código de institución (01–12, 99) del catálogo de Hacienda. */
+  nombreInstitucion: string;
+  /** Obligatorio si la institución es "99". */
+  nombreInstitucionOtros?: string;
+  fechaEmision: Date;
+  /** Porcentaje exonerado del impuesto, ej. 13 para exonerar el IVA completo. */
+  tarifaExonerada: number;
+}
+
 export interface Impuesto {
   codigo: CodigoImpuesto;
   codigoTarifa: CodigoTarifa;
   /** Porcentaje, ej. 13 para 13%. */
   tarifa: number;
+  /** Si viene, el impuesto se rebaja en el porcentaje exonerado. */
+  exoneracion?: Exoneracion;
 }
 
 export interface LineaDetalle {
@@ -153,6 +195,8 @@ export interface LineaDetalle {
   precioUnitario: number;
   /** true si la línea es un servicio; false/omitido = mercancía. */
   esServicio?: boolean;
+  /** Solo en facturas de exportación: partida arancelaria de la mercancía. */
+  partidaArancelaria?: string;
   descuentos?: Descuento[];
   /** Impuestos aplicables. Sin impuestos => línea exenta. */
   impuestos?: Impuesto[];

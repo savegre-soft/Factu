@@ -832,19 +832,41 @@ export interface DocumentoRecibidoRecord {
   mrConsecutivo: string | null;
   mrXml: string | null;
   mrGeneradoAt: Date | null;
+  /** Estado ante Hacienda; null mientras el mensaje solo esté generado. */
+  mrEstado: string | null;
+  mrXmlFirmado: string | null;
+  mrRespuestaXml: string | null;
+  mrEnviadoAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
 
 export type NuevoDocumentoRecibido = Omit<
   DocumentoRecibidoRecord,
-  "id" | "mrRespuesta" | "mrConsecutivo" | "mrXml" | "mrGeneradoAt" | "createdAt" | "updatedAt"
+  | "id"
+  | "mrRespuesta"
+  | "mrConsecutivo"
+  | "mrXml"
+  | "mrGeneradoAt"
+  | "mrEstado"
+  | "mrXmlFirmado"
+  | "mrRespuestaXml"
+  | "mrEnviadoAt"
+  | "createdAt"
+  | "updatedAt"
 > & { id: string };
 
 export interface MensajeReceptorGuardado {
   respuesta: string;
   consecutivo: string;
   xml: string;
+}
+
+/** Resultado del envío del mensaje receptor a Hacienda. */
+export interface MensajeReceptorEnviado {
+  estado: string;
+  xmlFirmado: string;
+  respuestaXml?: string;
 }
 
 export interface DocumentoRecibidoRepository {
@@ -854,5 +876,6 @@ export interface DocumentoRecibidoRepository {
   listarPorTenant(tenantId: string, pagina?: Pagina): Promise<DocumentoRecibidoRecord[]>;
   contarPorTenant(tenantId: string): Promise<number>;
   guardarMensajeReceptor(id: string, mr: MensajeReceptorGuardado): Promise<void>;
+  guardarEnvioMensajeReceptor(id: string, envio: MensajeReceptorEnviado): Promise<void>;
   eliminar(id: string): Promise<void>;
 }

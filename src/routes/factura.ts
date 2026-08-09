@@ -13,6 +13,7 @@ import {
   CondicionVenta,
   TipoIdentificacion,
   CodigoImpuesto,
+  TipoExoneracion,
   TipoMedioPago,
   type FacturaInput,
 } from "../domain/factura/types.js";
@@ -54,6 +55,20 @@ const lineaSchema = z.object({
         codigo: z.nativeEnum(CodigoImpuesto),
         codigoTarifa: z.string(),
         tarifa: z.number().nonnegative(),
+        // Rebaja el impuesto: zonas francas, diplomáticos, instituciones…
+        exoneracion: z
+          .object({
+            tipoDocumento: z.nativeEnum(TipoExoneracion),
+            tipoDocumentoOtro: z.string().optional(),
+            numeroDocumento: z.string().min(3).max(40),
+            articulo: z.number().int().optional(),
+            inciso: z.number().int().optional(),
+            nombreInstitucion: z.string().length(2),
+            nombreInstitucionOtros: z.string().optional(),
+            fechaEmision: z.coerce.date(),
+            tarifaExonerada: z.number().min(0).max(100),
+          })
+          .optional(),
       }),
     )
     .optional(),
@@ -69,6 +84,11 @@ export const datosFacturaSchema = z.object({
    * (emisor + sucursal + terminal + tipo); pasarlo explícitamente lo fuerza.
    */
   consecutivo: z.number().int().nonnegative().optional(),
+  /**
+   * "1" normal, "2" contingencia, "3" sin internet. En contingencia el
+   * comprobante se emite igual y se transmite cuando el servicio vuelva.
+   */
+  situacion: z.nativeEnum(SituacionComprobante).optional(),
   // Datos de la factura (hito 3)
   codigoActividadEmisor: z.string(),
   codigoActividadReceptor: z.string().optional(),
@@ -128,7 +148,7 @@ export async function facturaRoutes(app: FastifyInstance): Promise<void> {
       tipo: TipoComprobante.FacturaElectronica,
       // La vista previa no consume número de la serie: si no viene, se muestra 1.
       consecutivo: b.consecutivo ?? 1,
-      situacion: SituacionComprobante.Normal,
+      situacion: b.situacion ?? SituacionComprobante.Normal,
     });
 
     const input: FacturaInput = {

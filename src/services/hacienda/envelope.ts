@@ -11,6 +11,11 @@ export interface ReceptionEnvelope {
   fecha: string;
   emisor: { tipoIdentificacion: string; numeroIdentificacion: string };
   receptor?: { tipoIdentificacion: string; numeroIdentificacion: string };
+  /**
+   * Solo en el mensaje receptor: consecutivo de 20 dígitos de QUIEN responde.
+   * La `clave` sigue siendo la del comprobante original.
+   */
+  consecutivoReceptor?: string;
   /** XML firmado, codificado en base64. */
   comprobanteXml: string;
   /** URL de callback opcional para notificación asíncrona. */
@@ -23,6 +28,7 @@ export interface EnvelopeMeta {
   fecha: string;
   emisor: Identificacion;
   receptor?: Identificacion;
+  consecutivoReceptor?: string;
   callbackUrl?: string;
 }
 
@@ -53,6 +59,7 @@ export function construirEnvelope(signedXml: string, meta: EnvelopeMeta): Recept
       numeroIdentificacion: meta.receptor.numero,
     };
   }
+  if (meta.consecutivoReceptor) envelope.consecutivoReceptor = meta.consecutivoReceptor;
   if (meta.callbackUrl) envelope.callbackUrl = meta.callbackUrl;
   return envelope;
 }

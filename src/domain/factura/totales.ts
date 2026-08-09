@@ -13,7 +13,7 @@
  *   TotalVentaNeta      = TotalVenta - TotalDescuentos
  *   TotalComprobante    = TotalVentaNeta + TotalImpuesto + TotalOtrosCargos
  */
-import type { FacturaInput, LineaDetalle } from "./types.js";
+import type { Exoneracion, FacturaInput, LineaDetalle } from "./types.js";
 
 /** Decimales usados para montos (Hacienda admite hasta 5). */
 const DECIMALES = 5;
@@ -27,7 +27,11 @@ export interface ImpuestoCalculado {
   codigo: string;
   codigoTarifa: string;
   tarifa: number;
+  /** Impuesto que se cobra: ya rebajado si hay exoneración. */
   monto: number;
+  /** Monto exonerado, para el nodo Exoneracion y el total exonerado. */
+  montoExonerado: number;
+  exoneracion?: Exoneracion;
 }
 
 export interface LineaCalculada {
@@ -55,6 +59,8 @@ export interface ResumenFactura {
   totalMercanciasExentas: number;
   totalGravado: number;
   totalExento: number;
+  /** Suma de lo exonerado en todas las líneas. */
+  totalExonerado: number;
   totalVenta: number;
   totalDescuentos: number;
   totalVentaNeta: number;
@@ -76,12 +82,22 @@ export function calcularLinea(linea: LineaDetalle, numeroLinea: number): LineaCa
   );
   const subTotal = redondear(montoTotal - montoDescuento);
 
-  const impuestos: ImpuestoCalculado[] = (linea.impuestos ?? []).map((imp) => ({
-    codigo: imp.codigo,
-    codigoTarifa: imp.codigoTarifa,
-    tarifa: imp.tarifa,
-    monto: redondear(subTotal * (imp.tarifa / 100)),
-  }));
+  const impuestos: ImpuestoCalculado[] = (linea.impuestos ?? []).map((imp) => {
+    const bruto = redondear(subTotal * (imp.tarifa / 100));
+    // La exoneración rebaja el impuesto en su porcentaje: con tarifa exonerada
+    // igual a la del impuesto, la línea queda sin IVA que cobrar.
+    const montoExonerado = imp.exoneracion
+      ? redondear(subTotal * (imp.exoneracion.tarifaExonerada / 100))
+      : 0;
+    return {
+      codigo: imp.codigo,
+      codigoTarifa: imp.codigoTarifa,
+      tarifa: imp.tarifa,
+      monto: redondear(Math.max(bruto - montoExonerado, 0)),
+      montoExonerado,
+      ...(imp.exoneracion ? { exoneracion: imp.exoneracion } : {}),
+    };
+  });
 
   const impuestoNeto = redondear(impuestos.reduce((acc, i) => acc + i.monto, 0));
   const montoTotalLinea = redondear(subTotal + impuestoNeto);
@@ -110,12 +126,14 @@ export function calcularTotales(factura: FacturaInput): TotalesFactura {
   let totalMercanciasExentas = 0;
   let totalDescuentos = 0;
   let totalImpuesto = 0;
+  let totalExonerado = 0;
 
   const desgloseMap = new Map<string, DesgloseImpuesto>();
 
   for (const l of lineas) {
     totalDescuentos += l.montoDescuento;
     totalImpuesto += l.impuestoNeto;
+    totalExonerado += l.impuestos.reduce((a, i) => a + i.montoExonerado, 0);
 
     if (l.esServicio) {
       if (l.gravada) totalServGravados += l.montoTotal;
@@ -160,6 +178,7 @@ export function calcularTotales(factura: FacturaInput): TotalesFactura {
       totalMercanciasExentas,
       totalGravado,
       totalExento,
+      totalExonerado: redondear(totalExonerado),
       totalVenta,
       totalDescuentos,
       totalVentaNeta,

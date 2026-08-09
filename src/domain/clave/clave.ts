@@ -18,10 +18,25 @@ export enum TipoComprobante {
   NotaDebito = "02",
   NotaCredito = "03",
   TiqueteElectronico = "04",
-  MensajeReceptor = "05",
+  /**
+   * El mensaje receptor no tiene un código único: depende de la respuesta.
+   * 05 aceptación, 06 aceptación parcial, 07 rechazo.
+   */
+  MensajeAceptacion = "05",
+  MensajeAceptacionParcial = "06",
+  MensajeRechazo = "07",
   FacturaCompra = "08",
   FacturaExportacion = "09",
+  /** Recibo electrónico de pago, nuevo en v4.4. */
+  ReciboElectronicoPago = "10",
 }
+
+/** Código de consecutivo que corresponde a cada respuesta del mensaje receptor. */
+export const TIPO_POR_RESPUESTA_MR: Record<string, TipoComprobante> = {
+  "1": TipoComprobante.MensajeAceptacion,
+  "2": TipoComprobante.MensajeAceptacionParcial,
+  "3": TipoComprobante.MensajeRechazo,
+};
 
 /**
  * Código de 2 dígitos que le corresponde a cada tipo de documento dentro del
@@ -33,6 +48,9 @@ export const TIPO_POR_DOCUMENTO: Record<string, TipoComprobante> = {
   ND: TipoComprobante.NotaDebito,
   NC: TipoComprobante.NotaCredito,
   TE: TipoComprobante.TiqueteElectronico,
+  FEC: TipoComprobante.FacturaCompra,
+  FEE: TipoComprobante.FacturaExportacion,
+  REP: TipoComprobante.ReciboElectronicoPago,
 };
 
 /**

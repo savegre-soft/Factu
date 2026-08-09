@@ -23,15 +23,20 @@ import {
   CodigoImpuesto,
   CodigoReferencia,
   TipoDocReferencia,
+  TipoExoneracion,
   TipoMedioPago,
 } from "./types.js";
+import type { Exoneracion } from "./types.js";
 
-/** Tipos de comprobante que comparten esta misma estructura de XML. */
+/** Tipos de comprobante que comparten esta estructura de XML. */
 export enum TipoDocumento {
   FacturaElectronica = "FE",
   TiqueteElectronico = "TE",
   NotaCredito = "NC",
   NotaDebito = "ND",
+  /** Factura electrónica de compra: la emite quien le compra a un no inscrito. */
+  FacturaCompra = "FEC",
+  FacturaExportacion = "FEE",
 }
 
 interface DocumentoMeta {
@@ -41,28 +46,79 @@ interface DocumentoMeta {
   nsSegment: string;
   /** Si exige InformacionReferencia (notas de crédito/débito). */
   requiereReferencia: boolean;
+  /**
+   * Cada esquema recorta la cola de la línea de detalle a su manera: la
+   * exportación no lleva base imponible ni impuesto neto, y la de compra no
+   * lleva el impuesto asumido a nivel de fábrica.
+   */
+  linea: VarianteLinea;
+  /** La de compra exige el código de actividad del receptor, que es quien emite. */
+  actividadReceptorObligatoria?: boolean;
+  /** La exportación no admite el nodo de actividad del receptor. */
+  sinActividadReceptor?: boolean;
 }
+
+interface VarianteLinea {
+  baseImponible: boolean;
+  impuestoAsumidoFabrica: boolean;
+  impuestoNeto: boolean;
+  /** Solo la exportación admite la partida arancelaria. */
+  partidaArancelaria: boolean;
+}
+
+/** Cola de línea de la factura, el tiquete y las notas. */
+const LINEA_COMPLETA: VarianteLinea = {
+  baseImponible: true,
+  impuestoAsumidoFabrica: true,
+  impuestoNeto: true,
+  partidaArancelaria: false,
+};
 
 const DOCUMENTOS: Record<TipoDocumento, DocumentoMeta> = {
   [TipoDocumento.FacturaElectronica]: {
     root: "FacturaElectronica",
     nsSegment: "facturaElectronica",
     requiereReferencia: false,
+    linea: LINEA_COMPLETA,
   },
   [TipoDocumento.TiqueteElectronico]: {
     root: "TiqueteElectronico",
     nsSegment: "tiqueteElectronico",
     requiereReferencia: false,
+    linea: LINEA_COMPLETA,
   },
   [TipoDocumento.NotaCredito]: {
     root: "NotaCreditoElectronica",
     nsSegment: "notaCreditoElectronica",
     requiereReferencia: true,
+    linea: LINEA_COMPLETA,
   },
   [TipoDocumento.NotaDebito]: {
     root: "NotaDebitoElectronica",
     nsSegment: "notaDebitoElectronica",
     requiereReferencia: true,
+    linea: LINEA_COMPLETA,
+  },
+  [TipoDocumento.FacturaCompra]: {
+    root: "FacturaElectronicaCompra",
+    nsSegment: "facturaElectronicaCompra",
+    requiereReferencia: false,
+    // Su línea no lleva ImpuestoAsumidoEmisorFabrica.
+    linea: { ...LINEA_COMPLETA, impuestoAsumidoFabrica: false },
+    actividadReceptorObligatoria: true,
+  },
+  [TipoDocumento.FacturaExportacion]: {
+    root: "FacturaElectronicaExportacion",
+    nsSegment: "facturaElectronicaExportacion",
+    requiereReferencia: false,
+    // La exportación va sin IVA: su línea salta base imponible e impuesto neto.
+    linea: {
+      baseImponible: false,
+      impuestoAsumidoFabrica: false,
+      impuestoNeto: false,
+      partidaArancelaria: true,
+    },
+    sinActividadReceptor: true,
   },
 };
 
@@ -80,11 +136,12 @@ function money(n: number): string {
  * nodo Impuesto por línea, así que va IVA con tarifa 0% (código 01 del catálogo
  * de tarifas) y monto 0. Una exención real necesita además el nodo Exoneracion.
  */
-const IMPUESTO_CERO = {
-  codigo: CodigoImpuesto.IVA as string,
+const IMPUESTO_CERO: LineaCalculada["impuestos"][number] = {
+  codigo: CodigoImpuesto.IVA,
   codigoTarifa: "01",
   tarifa: 0,
   monto: 0,
+  montoExonerado: 0,
 };
 
 /** Recorta/rellena una descripción libre al rango 5–100 que exige el XSD. */
@@ -153,9 +210,13 @@ function addLinea(
   parent: XmlNode,
   input: FacturaInput["lineas"][number],
   calc: LineaCalculada,
+  variante: VarianteLinea,
 ): void {
   const node = parent.ele("LineaDetalle");
   node.ele("NumeroLinea").txt(String(calc.numeroLinea));
+  if (variante.partidaArancelaria && input.partidaArancelaria) {
+    node.ele("PartidaArancelaria").txt(input.partidaArancelaria);
+  }
   node.ele("CodigoCABYS").txt(input.codigoCabys);
   node.ele("Cantidad").txt(String(input.cantidad));
   node.ele("UnidadMedida").txt(input.unidadMedida);
@@ -181,22 +242,51 @@ function addLinea(
 
   // BaseImponible, Impuesto, ImpuestoAsumidoEmisorFabrica e ImpuestoNeto no
   // llevan minOccurs="0" en el XSD v4.4: van SIEMPRE, también en líneas sin
-  // impuesto, que se declaran con una tarifa de 0% y monto 0.
-  node.ele("BaseImponible").txt(money(calc.subTotal));
+  // impuesto, que se declaran con una tarifa de 0% y monto 0. Cada documento
+  // recorta esa cola según su propio esquema.
+  if (variante.baseImponible) node.ele("BaseImponible").txt(money(calc.subTotal));
   const impuestos = calc.impuestos.length > 0 ? calc.impuestos : [IMPUESTO_CERO];
   for (const imp of impuestos) {
     const i = node.ele("Impuesto");
     i.ele("Codigo").txt(imp.codigo);
     i.ele("CodigoTarifaIVA").txt(imp.codigoTarifa);
     i.ele("Tarifa").txt(imp.tarifa.toFixed(2));
-    i.ele("Monto").txt(money(imp.monto));
+    // El Monto del impuesto es el bruto; la rebaja va en el nodo Exoneracion.
+    i.ele("Monto").txt(money(imp.monto + imp.montoExonerado));
+    if (imp.exoneracion) addExoneracion(i, imp.exoneracion, imp.montoExonerado);
   }
   // En una venta normal (sin impuesto asumido por el emisor / cobrado a nivel
   // de fábrica) es 0.
-  node.ele("ImpuestoAsumidoEmisorFabrica").txt(money(0));
-  node.ele("ImpuestoNeto").txt(money(calc.impuestoNeto));
+  if (variante.impuestoAsumidoFabrica) {
+    node.ele("ImpuestoAsumidoEmisorFabrica").txt(money(0));
+  }
+  if (variante.impuestoNeto) node.ele("ImpuestoNeto").txt(money(calc.impuestoNeto));
 
   node.ele("MontoTotalLinea").txt(money(calc.montoTotalLinea));
+}
+
+/**
+ * Respaldo de la exoneración del impuesto. El orden lo fija el XSD:
+ * TipoDocumentoEX1 -> TipoDocumentoOTRO? -> NumeroDocumento -> Articulo? ->
+ * Inciso? -> NombreInstitucion -> NombreInstitucionOtros? -> FechaEmisionEX ->
+ * TarifaExonerada -> MontoExoneracion.
+ */
+function addExoneracion(parent: XmlNode, ex: Exoneracion, monto: number): void {
+  const node = parent.ele("Exoneracion");
+  node.ele("TipoDocumentoEX1").txt(ex.tipoDocumento);
+  if (ex.tipoDocumento === TipoExoneracion.Otros && ex.tipoDocumentoOtro) {
+    node.ele("TipoDocumentoOTRO").txt(descripcionOtro(ex.tipoDocumentoOtro));
+  }
+  node.ele("NumeroDocumento").txt(ex.numeroDocumento);
+  if (ex.articulo !== undefined) node.ele("Articulo").txt(String(ex.articulo));
+  if (ex.inciso !== undefined) node.ele("Inciso").txt(String(ex.inciso));
+  node.ele("NombreInstitucion").txt(ex.nombreInstitucion);
+  if (ex.nombreInstitucion === "99" && ex.nombreInstitucionOtros) {
+    node.ele("NombreInstitucionOtros").txt(descripcionOtro(ex.nombreInstitucionOtros));
+  }
+  node.ele("FechaEmisionEX").txt(fechaEmisionISO(ex.fechaEmision));
+  node.ele("TarifaExonerada").txt(ex.tarifaExonerada.toFixed(2));
+  node.ele("MontoExoneracion").txt(money(monto));
 }
 
 function addResumen(
@@ -218,6 +308,7 @@ function addResumen(
   node.ele("TotalMercanciasExentas").txt(money(resumen.totalMercanciasExentas));
   node.ele("TotalGravado").txt(money(resumen.totalGravado));
   node.ele("TotalExento").txt(money(resumen.totalExento));
+  if (resumen.totalExonerado > 0) node.ele("TotalExonerado").txt(money(resumen.totalExonerado));
   node.ele("TotalVenta").txt(money(resumen.totalVenta));
   node.ele("TotalDescuentos").txt(money(resumen.totalDescuentos));
   node.ele("TotalVentaNeta").txt(money(resumen.totalVentaNeta));
@@ -295,8 +386,12 @@ export function generarComprobanteXml(
     .ele("ProveedorSistemas")
     .txt(factura.proveedorSistemas?.trim() || factura.emisor.identificacion.numero);
   root.ele("CodigoActividadEmisor").txt(factura.codigoActividadEmisor);
-  if (factura.codigoActividadReceptor)
+  if (meta.actividadReceptorObligatoria && !factura.codigoActividadReceptor) {
+    throw new Error(`${meta.root} requiere el código de actividad del receptor`);
+  }
+  if (!meta.sinActividadReceptor && factura.codigoActividadReceptor) {
     root.ele("CodigoActividadReceptor").txt(factura.codigoActividadReceptor);
+  }
   root.ele("NumeroConsecutivo").txt(factura.numeroConsecutivo);
   root.ele("FechaEmision").txt(fechaEmisionISO(fecha));
 
@@ -307,7 +402,9 @@ export function generarComprobanteXml(
   if (factura.plazoCredito) root.ele("PlazoCredito").txt(factura.plazoCredito);
 
   const detalle = root.ele("DetalleServicio");
-  factura.lineas.forEach((linea, i) => addLinea(detalle, linea, totales.lineas[i]!));
+  factura.lineas.forEach((linea, i) =>
+    addLinea(detalle, linea, totales.lineas[i]!, meta.linea),
+  );
 
   addResumen(root, factura, totales);
 

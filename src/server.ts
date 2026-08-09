@@ -12,6 +12,7 @@ import { haciendaRoutes } from "./routes/hacienda.js";
 import { facturaRoutes } from "./routes/factura.js";
 import { firmaRoutes } from "./routes/firma.js";
 import { comprobanteRoutes } from "./routes/comprobante.js";
+import { reciboPagoRoutes } from "./routes/reciboPago.js";
 import { mensajeReceptorRoutes } from "./routes/mensajeReceptor.js";
 import { documentosRecibidosRoutes } from "./routes/documentosRecibidos.js";
 import { correoRoutes } from "./routes/correo.js";
@@ -60,6 +61,7 @@ export function buildServer(): FastifyInstance {
   app.register(facturaRoutes);
   app.register(firmaRoutes);
   app.register(comprobanteRoutes);
+  app.register(reciboPagoRoutes); // /recibo-pago/enviar (REP, v4.4)
   app.register(borradorRoutes); // /borradores/*
   app.register(chatRoutes); // /chat/*  (mensajería entre usuarios del tenant)
   app.register(mensajeReceptorRoutes);

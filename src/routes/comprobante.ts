@@ -33,6 +33,8 @@ const RUTA_A_TIPO: Record<string, TipoDocumento> = {
   tiquete: TipoDocumento.TiqueteElectronico,
   "nota-credito": TipoDocumento.NotaCredito,
   "nota-debito": TipoDocumento.NotaDebito,
+  compra: TipoDocumento.FacturaCompra,
+  exportacion: TipoDocumento.FacturaExportacion,
 };
 
 export async function comprobanteRoutes(app: FastifyInstance): Promise<void> {

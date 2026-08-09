@@ -4,6 +4,7 @@ import { generarFacturaXml, fechaEmisionISO } from "./facturaXml.js";
 import {
   CodigoDescuento,
   CodigoImpuesto,
+  TipoExoneracion,
   CondicionVenta,
   TipoIdentificacion,
   TipoMedioPago,
@@ -156,6 +157,61 @@ describe("generarFacturaXml", () => {
       .Descuento;
     expect(desc.CodigoDescuento).toBe("99");
     expect(desc.CodigoDescuentoOTRO).toBe("Acuerdo puntual con el cliente");
+  });
+
+  it("una línea exonerada rebaja el impuesto y declara el respaldo", () => {
+    const input = facturaBase();
+    input.lineas[0]!.impuestos = [
+      {
+        codigo: CodigoImpuesto.IVA,
+        codigoTarifa: "08",
+        tarifa: 13,
+        exoneracion: {
+          tipoDocumento: TipoExoneracion.ZonaFranca,
+          numeroDocumento: "EX-2026-0001",
+          nombreInstitucion: "05",
+          fechaEmision: new Date(Date.UTC(2026, 0, 15, 18, 0, 0)),
+          tarifaExonerada: 13,
+        },
+      },
+    ];
+    const fe = parse(generarFacturaXml(input)).FacturaElectronica;
+    const imp = fe.DetalleServicio.LineaDetalle.Impuesto;
+
+    // El Monto sigue siendo el impuesto bruto; lo exonerado va en su nodo.
+    expect(imp.Monto).toBe("260.00000");
+    expect(imp.Exoneracion.TipoDocumentoEX1).toBe("08");
+    expect(imp.Exoneracion.NumeroDocumento).toBe("EX-2026-0001");
+    expect(imp.Exoneracion.TarifaExonerada).toBe("13.00");
+    expect(imp.Exoneracion.MontoExoneracion).toBe("260.00000");
+
+    // Exonerado al 100%: no queda impuesto que cobrar.
+    expect(fe.DetalleServicio.LineaDetalle.ImpuestoNeto).toBe("0.00000");
+    expect(fe.ResumenFactura.TotalImpuesto).toBe("0.00000");
+    expect(fe.ResumenFactura.TotalExonerado).toBe("260.00000");
+    expect(fe.ResumenFactura.TotalComprobante).toBe("2000.00000");
+  });
+
+  it("una exoneración parcial deja el resto del impuesto", () => {
+    const input = facturaBase();
+    input.lineas[0]!.impuestos = [
+      {
+        codigo: CodigoImpuesto.IVA,
+        codigoTarifa: "08",
+        tarifa: 13,
+        exoneracion: {
+          tipoDocumento: TipoExoneracion.ComprasAutorizadasDGT,
+          numeroDocumento: "AUT-77",
+          nombreInstitucion: "01",
+          fechaEmision: new Date(Date.UTC(2026, 0, 15, 18, 0, 0)),
+          tarifaExonerada: 10,
+        },
+      },
+    ];
+    const fe = parse(generarFacturaXml(input)).FacturaElectronica;
+    // 13% de 2000 = 260; exonerado el 10% = 200; se cobran 60.
+    expect(fe.DetalleServicio.LineaDetalle.ImpuestoNeto).toBe("60.00000");
+    expect(fe.ResumenFactura.TotalExonerado).toBe("200.00000");
   });
 
   it("omite el receptor cuando no se proporciona (caso tiquete)", () => {

@@ -51,6 +51,7 @@ import type {
   PasswordResetRepository,
   NuevoPasswordReset,
   MensajeReceptorGuardado,
+  MensajeReceptorEnviado,
   NuevaApiKey,
   NuevoComprobante,
   NuevoDocumentoRecibido,
@@ -769,6 +770,10 @@ export class DocumentoRecibidoRepositoryMemoria implements DocumentoRecibidoRepo
       mrConsecutivo: null,
       mrXml: null,
       mrGeneradoAt: null,
+      mrEstado: null,
+      mrXmlFirmado: null,
+      mrRespuestaXml: null,
+      mrEnviadoAt: null,
       createdAt: ahora,
       updatedAt: ahora,
     };
@@ -806,6 +811,19 @@ export class DocumentoRecibidoRepositoryMemoria implements DocumentoRecibidoRepo
       mrConsecutivo: mr.consecutivo,
       mrXml: mr.xml,
       mrGeneradoAt: new Date(),
+      updatedAt: new Date(),
+    });
+  }
+
+  async guardarEnvioMensajeReceptor(id: string, envio: MensajeReceptorEnviado): Promise<void> {
+    const existente = this.docs.get(id);
+    if (!existente) throw new Error(`Documento recibido "${id}" no encontrado`);
+    this.docs.set(id, {
+      ...existente,
+      mrEstado: envio.estado,
+      mrXmlFirmado: envio.xmlFirmado,
+      mrRespuestaXml: envio.respuestaXml ?? null,
+      mrEnviadoAt: new Date(),
       updatedAt: new Date(),
     });
   }

@@ -73,6 +73,13 @@ const datosComprobante = {
       description:
         "Opcional: si se omite, la API reserva el siguiente de la serie (emisor + sucursal + terminal + tipo). Pasarlo fuerza ese número.",
     },
+    situacion: {
+      type: "string",
+      enum: ["1", "2", "3"],
+      default: "1",
+      description:
+        "1 normal, 2 contingencia (Hacienda no disponible), 3 sin internet. Va en la clave.",
+    },
     codigoActividadEmisor: {
       type: "string",
       description: "6 caracteres: CIIU4 del RUT (p. ej. 8549.0) o CIIU3 de 6 dígitos",
@@ -551,6 +558,14 @@ export const comprobanteEnviarSchema = {
   body: datosComprobante,
 } as const;
 
+export const reciboPagoEnviarSchema = {
+  tags: ["Comprobantes"],
+  summary: "Emite un Recibo Electrónico de Pago (REP) y lo envía a Hacienda",
+  description:
+    "Obligatorio en v4.4 al cobrar una venta a crédito. Referencia la factura que se cobra y usa su propia serie de consecutivos (tipo 10).",
+  security: bearer,
+} as const;
+
 export const comprobantesListarSchema = {
   tags: ["Comprobantes"],
   summary: "Lista los comprobantes emitidos del tenant (facturas enviadas)",
@@ -770,6 +785,15 @@ export const recibidoCrearSchema = {
     properties: { xml: { type: "string", description: "XML del comprobante recibido (v4.4)" } },
     required: ["xml"],
   },
+} as const;
+
+export const recibidoEnviarMrSchema = {
+  tags: ["Documentos recibidos"],
+  summary: "Envía a Hacienda el mensaje receptor ya generado",
+  description:
+    "Lo firma con el certificado del receptor y lo manda a recepción. Requiere sesión con Hacienda para ese emisor.",
+  security: bearer,
+  params: { type: "object", properties: { id: { type: "string" } }, required: ["id"] },
 } as const;
 
 export const recibidoListarSchema = {

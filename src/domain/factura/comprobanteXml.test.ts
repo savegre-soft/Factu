@@ -86,6 +86,40 @@ describe("generarComprobanteXml — Notas de crédito/débito", () => {
     expect(xml).toContain("/v4.4/notaDebitoElectronica");
   });
 
+  it("la factura de compra usa su raíz y exige la actividad del receptor", () => {
+    const compra = { ...base(), codigoActividadReceptor: "8549.0" };
+    const xml = generarComprobanteXml(TipoDocumento.FacturaCompra, compra);
+    expect(xml).toContain("<FacturaElectronicaCompra");
+    expect(xml).toContain("/v4.4/facturaElectronicaCompra");
+
+    const fec = parse(xml).FacturaElectronicaCompra;
+    expect(fec.CodigoActividadReceptor).toBe("8549.0");
+    // Su esquema no lleva el impuesto asumido a nivel de fábrica.
+    expect(fec.DetalleServicio.LineaDetalle.ImpuestoAsumidoEmisorFabrica).toBeUndefined();
+    expect(fec.DetalleServicio.LineaDetalle.BaseImponible).toBeDefined();
+    expect(fec.DetalleServicio.LineaDetalle.ImpuestoNeto).toBeDefined();
+
+    // Sin la actividad del receptor, no se puede emitir.
+    expect(() => generarComprobanteXml(TipoDocumento.FacturaCompra, base())).toThrow(
+      /actividad del receptor/,
+    );
+  });
+
+  it("la exportación recorta la cola de la línea y admite partida arancelaria", () => {
+    const exportacion = base();
+    exportacion.lineas[0]!.partidaArancelaria = "0901.21.00";
+    const xml = generarComprobanteXml(TipoDocumento.FacturaExportacion, exportacion);
+    expect(xml).toContain("<FacturaElectronicaExportacion");
+
+    const linea = parse(xml).FacturaElectronicaExportacion.DetalleServicio.LineaDetalle;
+    expect(linea.PartidaArancelaria).toBe("0901.21.00");
+    // Su esquema va de SubTotal a Impuesto y de ahí a MontoTotalLinea.
+    expect(linea.BaseImponible).toBeUndefined();
+    expect(linea.ImpuestoAsumidoEmisorFabrica).toBeUndefined();
+    expect(linea.ImpuestoNeto).toBeUndefined();
+    expect(linea.MontoTotalLinea).toBeDefined();
+  });
+
   it("falla si una nota no lleva InformacionReferencia", () => {
     expect(() => generarComprobanteXml(TipoDocumento.NotaCredito, base())).toThrow(
       /InformacionReferencia/,
