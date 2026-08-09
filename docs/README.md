@@ -18,15 +18,25 @@ ante el Ministerio de Hacienda de Costa Rica.
 Cubre el ciclo completo de la factura electrónica:
 
 ```
-Registrar emisor → Subir certificado .p12 → Autenticar (IDP) →
-Generar clave → Generar XML → Firmar (XAdES) → Enviar → Consultar estado
+Registrar emisor → Subir certificado .p12 → Autenticar (IDP) → Reservar consecutivo →
+Generar clave → Generar XML → Firmar (XAdES) → Enviar → Consultar estado →
+Entregar al cliente (PDF + XML por correo)
 ```
 
 Tipos de comprobante soportados: **Factura**, **Tiquete**, **Nota de Crédito**,
-**Nota de Débito** y **Mensaje Receptor**.
+**Nota de Débito**, **Factura de Compra**, **Factura de Exportación**,
+**Recibo Electrónico de Pago** (REP) y **Mensaje Receptor**.
+
+Alrededor del núcleo: documentos recibidos (buzón IMAP o carga manual) con envío del
+mensaje receptor, entrega al cliente con reintentos, estadísticas, webhooks,
+notificaciones (SMS/WhatsApp/Slack/Teams/Bitrix24), auditoría y chat interno.
 
 ## Estado
 
-Los 8 hitos del núcleo están completos (ver el roadmap en el [README raíz](../README.md)).
-Pendiente para producción: datos oficiales de la política de firma (XAdES-EPES),
-validación contra el XSD oficial y pruebas contra el sandbox real de Hacienda.
+El núcleo está completo, incluidos los consecutivos gestionados por el servidor y la
+re-consulta de comprobantes sin veredicto (ver el roadmap en el [README raíz](../README.md)
+y el detalle fila por fila en [REQUIREMENTS.md](../REQUIREMENTS.md)).
+
+Pendiente para producción: la prueba end-to-end contra el sandbox real de Hacienda, la
+validación contra el XSD oficial v4.4, y confirmar que la política de firma configurada
+sigue siendo la resolución vigente.

@@ -57,6 +57,13 @@ En el navegador:
 | `npm run prisma:generate` | Genera el cliente Prisma. |
 | `npm run prisma:migrate` | Aplica migraciones (requiere PostgreSQL). |
 
+## Scripts de mantenimiento
+
+| Comando | Cuándo |
+|---|---|
+| `LLAVE_VIEJA=… LLAVE_NUEVA=… node scripts/rotar-llave-maestra.mjs` | Al cambiar `FACTU_MASTER_KEY`: recifra todo lo que estaba sellado con la llave anterior. |
+| `node scripts/rellenar-totales.mjs [--dry-run]` | Una sola vez, para rellenar `total`/`moneda` de los comprobantes emitidos antes de que se guardaran esas columnas (los lee del XML firmado). |
+
 ## Siguiente paso
 
 Sigue la [guía de conexión con Hacienda](./conexion-hacienda.md) para emitir tu primer

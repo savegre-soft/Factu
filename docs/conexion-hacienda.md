@@ -12,26 +12,34 @@ Antes de empezar, cada emisor debe tramitar ante Hacienda (portal ATV):
 2. **Credenciales de la API** — un **usuario** y **clave** del ambiente que uses
    (pruebas/`stag` o producción/`prod`). Se generan en el portal de Hacienda al
    registrar la API de comprobantes.
-3. **Código de actividad económica** del emisor (6 dígitos).
+3. **Código de actividad económica** del emisor: 6 caracteres. Desde TRIBU-CR el
+   catálogo es CIIU4 y viene con punto (`8549.0`, tal cual lo devuelve `/fe/ae`
+   del RUT); también se aceptan los CIIU3 viejos de 6 dígitos (`620100`).
 
 > ⚠️ Empieza SIEMPRE en el ambiente de **pruebas (`stag`)**. No uses producción
 > hasta validar todo el flujo.
 
 ## 2. Configurar el entorno
 
-En tu `.env` (ver [configuración](./configuracion.md) para el detalle):
+Con una sola variable basta: de `HACIENDA_ENV` se derivan las URLs del IDP y de
+recepción y el `client_id` del ambiente (ver [configuración](./configuracion.md)).
 
 ```bash
-HACIENDA_ENV=stag
-HACIENDA_IDP_URL="<endpoint de token del IDP de Hacienda (stag)>"
-HACIENDA_API_URL="<URL base de recepción de comprobantes (stag)>"
-HACIENDA_CLIENT_ID=api-stag
+HACIENDA_ENV=stag        # stag → realm rut-stag + api-sandbox · prod → realm rut + api
 
-FACTU_MASTER_KEY="<llave aleatoria para cifrar los .p12 en reposo>"
+FACTU_MASTER_KEY="<llave aleatoria para cifrar los secretos en reposo>"
+JWT_SECRET="<secreto para firmar los JWT de sesión>"
+
+# Política de firma XAdES-EPES: sin esto Hacienda rechaza con
+# "La firma del documento no tiene el Policy Id". .env.example ya trae la
+# resolución DGT-R-48-2016 v4.1 — confirma que siga vigente.
+HACIENDA_POLICY_URL="..."
+HACIENDA_POLICY_HASH="..."
 ```
 
-> Las URLs exactas del IDP y de recepción las publica Hacienda en su documentación
-> técnica oficial. Las de `.env.example` son de referencia y **debes confirmarlas**.
+> Solo hay que fijar `HACIENDA_IDP_URL`, `HACIENDA_API_URL` o `HACIENDA_CLIENT_ID`
+> si Hacienda publica endpoints distintos a los que trae el código.
+> `GET /ambiente` muestra la configuración efectiva y si está listo para producción.
 
 ## 3. Control de acceso (multi-tenant)
 
@@ -107,15 +115,27 @@ curl -X POST http://localhost:3000/hacienda/login \
 
 ### Paso 4 — Emitir el comprobante  *(rol facturador+)*
 
-El tipo va en la ruta: `factura`, `tiquete`, `nota-credito` o `nota-debito`.
+El tipo va en la ruta: `factura`, `tiquete`, `nota-credito`, `nota-debito`,
+`compra` (factura electrónica de compra, a un no inscrito) o `exportacion`.
+
+El **consecutivo es opcional**: si se omite, la API reserva el siguiente de la
+serie (emisor + sucursal + terminal + tipo) de forma atómica. Mandarlo desde el
+cliente es un override — una recarga o una segunda pestaña repetirían el número y
+Hacienda rechazaría el comprobante. Para mostrarlo en el formulario antes de
+emitir, sin consumirlo:
+
+```bash
+curl "http://localhost:3000/comprobante/proximo-consecutivo?cedulaEmisor=3101123456&tipo=factura" \
+  -H "Authorization: Bearer $TOKEN"
+# → { "consecutivo": 42 }
+```
 
 ```bash
 curl -X POST http://localhost:3000/comprobante/factura/enviar \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{
     "cedulaEmisor": "3101123456",
-    "consecutivo": 1,
-    "codigoActividadEmisor": "620100",
+    "codigoActividadEmisor": "8549.0",
     "emisor": {
       "nombre": "Empresa X S.A.",
       "identificacion": { "tipo": "02", "numero": "3101123456" },
@@ -160,12 +180,48 @@ corrigen y por qué):
 
 ### Paso 5 — Consultar el estado
 
-La emisión ya espera el estado final, pero puedes reconsultar el comprobante
-persistido:
+La emisión espera el estado final unos 15 segundos (5 intentos × 3 s). Puedes
+consultar el comprobante persistido en cualquier momento:
 
 ```bash
-curl http://localhost:3000/comprobante/<clave>
+curl http://localhost:3000/comprobante/<clave> -H "Authorization: Bearer $TOKEN"
 ```
+
+Si Hacienda tardó más que esa ventana, el comprobante queda en `recibido` o
+`procesando` y **el poller de re-consulta lo retoma solo** (`RECONSULTA_MINUTOS`,
+10 min por defecto): al llegar el veredicto actualiza el estado y dispara lo mismo
+que habría disparado la emisión — webhook, notificación y entrega al cliente.
+
+## Recibo Electrónico de Pago (REP)
+
+Nuevo en la v4.4: quien facturó **a crédito** debe emitirlo cuando recibe el pago.
+Sigue el mismo camino (clave → XML → firma → envío → estado), tiene su propia
+serie de consecutivos, y `informacionReferencia` es **obligatoria** — identifica la
+factura que se está cobrando.
+
+```bash
+curl -X POST http://localhost:3000/recibo-pago/enviar \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{
+    "cedulaEmisor": "3101123456",
+    "emisor": { "nombre": "Empresa X S.A.",
+      "identificacion": { "tipo": "02", "numero": "3101123456" },
+      "correoElectronico": "facturas@empresa.cr" },
+    "receptor": { "nombre": "Cliente Y",
+      "identificacion": { "tipo": "01", "numero": "102340567" } },
+    "lineas": [ { "detalle": "Abono factura 0001", "montoTotal": 1000,
+      "impuestos": [{ "codigo": "01", "codigoTarifa": "08", "tarifa": 13, "monto": 130 }] } ],
+    "mediosPago": [ { "tipo": "01" } ],
+    "informacionReferencia": [
+      { "tipoDoc": "01", "numero": "<clave de 50 díg. de la factura cobrada>",
+        "fechaEmision": "2026-08-01T12:00:00-06:00", "codigo": "99", "razon": "Cobro de factura a crédito" } ]
+  }'
+```
+
+> A diferencia de la factura, el emisor y el receptor van **sin ubicación ni
+> teléfono**, no hay código de actividad, y la línea no lleva CABYS ni cantidad: lo
+> que se documenta es un monto cobrado, no una venta. El correo del emisor sí es
+> obligatorio.
 
 ## Validación previa
 
@@ -188,9 +244,23 @@ curl -X POST http://localhost:3000/mensaje-receptor/xml \
 # mensaje: 1=aceptado, 2=aceptado parcial, 3=rechazado
 ```
 
+Sobre un documento que Factu ya registró como recibido (carga manual, buzón IMAP o
+routing interno), el flujo completo es generar **y enviar**: responder es una
+obligación con plazo, y generar el XML sin mandarlo no cumple nada.
+
+```bash
+curl -X POST http://localhost:3000/recibidos/<id>/mensaje-receptor \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{ "respuesta": "1" }'   # 1=aceptado, 2=aceptado parcial, 3=rechazado
+
+curl -X POST http://localhost:3000/recibidos/<id>/mensaje-receptor/enviar \
+  -H "Authorization: Bearer $TOKEN"
+```
+
 ## Pendientes para producción
 
-- **Política de firma (XAdES-EPES)**: configura `HACIENDA_POLICY_URL` y
-  `HACIENDA_POLICY_HASH` con los valores oficiales de la resolución vigente.
+- **Prueba end-to-end contra el sandbox real** de Hacienda, con credenciales y
+  certificado reales. Es lo único que falta del flujo de emisión.
 - **Validación XSD**: validar el XML contra el esquema oficial de Hacienda.
-- **URLs oficiales** del IDP y de recepción del sandbox/producción.
+- **Política de firma**: confirmar que la resolución que trae `.env.example`
+  (DGT-R-48-2016 v4.1) sigue siendo la vigente.
