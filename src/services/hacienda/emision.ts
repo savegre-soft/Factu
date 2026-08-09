@@ -51,6 +51,12 @@ export interface EmisionDeps {
     esperarEstadoFinal: (token: string, clave: string) => Promise<EstadoResult>;
   };
   certificado: Certificado;
+  /**
+   * Se invoca en cuanto Hacienda acepta la recepción del sobre. A partir de ese
+   * punto el comprobante existe para Hacienda y su consecutivo está consumido,
+   * aunque después falle cualquier otra cosa.
+   */
+  alEntregarAHacienda?: () => void;
 }
 
 export interface EmisionResult {
@@ -108,6 +114,7 @@ export async function emitirComprobante(
   });
 
   const envio = await deps.cliente.enviar(token, envelope);
+  deps.alEntregarAHacienda?.();
   const estado = await deps.cliente.esperarEstadoFinal(token, clave);
 
   return {

@@ -732,7 +732,6 @@ export interface ComprobanteRepository {
   crear(rec: NuevoComprobante): Promise<ComprobanteRecord>;
   actualizarEstado(clave: string, estado: string, respuestaXml?: string): Promise<void>;
   buscar(clave: string): Promise<ComprobanteRecord | null>;
-  listarPorEmisor(cedula: string): Promise<ComprobanteRecord[]>;
   /** Listado paginado, más reciente primero, sin los XML. */
   listarResumen(filtro: FiltroComprobantes): Promise<PaginaComprobantes>;
   /**
@@ -756,6 +755,15 @@ export interface ComprobanteRepository {
   reservarConsecutivo(serie: SerieConsecutivo): Promise<number>;
   /** Número que entregaría la próxima reserva, sin consumirlo (para la UI). */
   proximoConsecutivo(serie: SerieConsecutivo): Promise<number>;
+  /**
+   * Devuelve a la serie un número reservado que no llegó a usarse, para no
+   * dejar huecos cuando la emisión falla antes de que Hacienda vea nada.
+   *
+   * Solo lo devuelve si sigue siendo el último entregado: si otra emisión ya
+   * avanzó el contador, el hueco es inevitable y no se toca nada. Devuelve true
+   * si lo liberó.
+   */
+  liberarConsecutivo(serie: SerieConsecutivo, numero: number): Promise<boolean>;
 }
 
 // ---- Envíos del comprobante al cliente (auditoría de correo saliente) ----

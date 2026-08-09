@@ -243,6 +243,11 @@ export const authRegistroSchema = {
   },
 } as const;
 
+export const authLogoutSchema = {
+  tags: ["Autenticación"],
+  summary: "Cierra la sesión del navegador (borra la cookie httpOnly)",
+} as const;
+
 export const authLoginSchema = {
   tags: ["Autenticación"],
   summary: "Inicia sesión y devuelve un JWT",

@@ -11,6 +11,7 @@ import { tokenStore, HaciendaAuthError, SinSesionHaciendaError } from "../servic
 import { haciendaLoginSchema, haciendaEmisorSchema } from "../plugins/schemas.js";
 import { Permiso } from "../domain/auth/roles.js";
 import { emisorDelTenant } from "./_guards.js";
+import { esCredencialInvalida } from "../domain/auth/erroresIdp.js";
 
 const loginSchema = z.object({
   emisor: z.string().min(1),
@@ -19,14 +20,7 @@ const loginSchema = z.object({
 });
 const emisorSchema = z.object({ emisor: z.string().min(1) });
 
-/** `{ error: "invalid_grant" }` del IDP: credenciales equivocadas, no un fallo. */
-function esInvalidGrant(cuerpo: unknown): boolean {
-  if (typeof cuerpo === "string") return cuerpo.includes("invalid_grant");
-  if (cuerpo && typeof cuerpo === "object") {
-    return (cuerpo as { error?: unknown }).error === "invalid_grant";
-  }
-  return false;
-}
+
 
 export async function haciendaRoutes(app: FastifyInstance): Promise<void> {
   app.post(
@@ -53,8 +47,7 @@ export async function haciendaRoutes(app: FastifyInstance): Promise<void> {
           // mal: eso es culpa de las credenciales (401), no de la integración
           // (502). Mandarlo todo a 502 hacía imposible distinguir un tecleo
           // equivocado de Hacienda caída.
-          const esCredencial =
-            err.status === 401 || (err.status === 400 && esInvalidGrant(err.body));
+          const esCredencial = esCredencialInvalida(err.status, err.body);
           return reply.status(esCredencial ? 401 : 502).send({
             error: esCredencial
               ? "Usuario o contraseña de Hacienda incorrectos"

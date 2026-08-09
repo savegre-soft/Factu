@@ -10,6 +10,8 @@
  */
 import type { FastifyInstance, FastifyReply, FastifyRequest, preHandlerHookHandler } from "fastify";
 import fastifyJwt from "@fastify/jwt";
+import fastifyCookie from "@fastify/cookie";
+import { leerCookieSesion } from "./sesionCookie.js";
 import { env } from "../config/env.js";
 import { Permiso, Rol, rolTienePermiso } from "../domain/auth/roles.js";
 import { apiKeyService, API_KEY_PREFIJO } from "../services/apiKeys/index.js";
@@ -42,6 +44,32 @@ function tokenDeAuthorization(request: FastifyRequest): string | undefined {
   return auth.slice("Bearer ".length).trim();
 }
 
+/**
+ * Métodos que cambian estado. Son los únicos que un CSRF querría provocar: un
+ * GET no modifica nada.
+ */
+const METODOS_INSEGUROS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
+/**
+ * Con la sesión en cookie, el navegador la adjunta sola: hay que comprobar que
+ * la petición nace de la propia aplicación y no de un sitio ajeno.
+ *
+ * `SameSite=lax` ya bloquea el envío cross-site, pero es una defensa del
+ * navegador; esta es la del servidor. Se acepta si el `Origin` coincide con el
+ * host de la petición o con APP_URL, y también cuando no hay `Origin` (clientes
+ * que no son navegadores, que además usarían el header y no la cookie).
+ */
+function origenPropio(request: FastifyRequest): boolean {
+  const origin = request.headers.origin;
+  if (!origin) return true;
+  try {
+    const { host } = new URL(origin);
+    return host === request.headers.host || host === new URL(env.APP_URL).host;
+  } catch {
+    return false;
+  }
+}
+
 declare module "fastify" {
   interface FastifyInstance {
     authenticate: preHandlerHookHandler;
@@ -61,6 +89,8 @@ function jwtSecret(): string {
 }
 
 export function registrarAuth(app: FastifyInstance): void {
+  // El plugin de cookies tiene que ir antes: `autenticar` lee request.cookies.
+  app.register(fastifyCookie);
   app.register(fastifyJwt, { secret: jwtSecret() });
 
   /**
@@ -82,9 +112,19 @@ export function registrarAuth(app: FastifyInstance): void {
       return true;
     }
 
-    // Usuario humano: JWT de sesión.
+    // Usuario humano: JWT de sesión, en el header o en la cookie httpOnly.
+    const cookie = token ? undefined : leerCookieSesion(request);
+    if (cookie && METODOS_INSEGUROS.has(request.method) && !origenPropio(request)) {
+      reply.status(403).send({ error: "Origen no permitido para esta petición" });
+      return false;
+    }
+
     try {
-      await request.jwtVerify();
+      if (cookie) {
+        request.user = app.jwt.verify(cookie);
+      } else {
+        await request.jwtVerify();
+      }
       return true;
     } catch {
       reply.status(401).send({ error: "No autenticado (token ausente o inválido)" });

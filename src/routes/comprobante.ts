@@ -109,14 +109,27 @@ export async function comprobanteRoutes(app: FastifyInstance): Promise<void> {
     // comprobante ya emitido: ningún fallo posterior puede reportarse como
     // "fallo al emitir", o el usuario reintentaría y duplicaría el documento.
     let result;
+    // Mientras esto sea false, Hacienda no ha visto nada y el consecutivo que
+    // se reservó se puede devolver a la serie.
+    let entregado = false;
     try {
       result = await emitirComprobante(tipo, { ...datos, consecutivo: consecutivoAsignado }, {
         obtenerToken: () => tokenStore.getAccessToken(datos.cedulaEmisor),
         firmar,
         cliente: receptionClient,
         certificado,
+        alEntregarAHacienda: () => {
+          entregado = true;
+        },
       });
     } catch (err) {
+      // Falló antes de entregarlo: se devuelve el número para no dejar un hueco
+      // en la serie. Si ya se entregó, el número está consumido y no se toca.
+      if (!entregado && datos.consecutivo === undefined) {
+        await comprobanteRepository
+          .liberarConsecutivo(serie, consecutivoAsignado)
+          .catch((e) => request.log.warn({ err: e }, "No se pudo liberar el consecutivo"));
+      }
       // Sin sesión con el IDP no es un fallo de la integración: es que hay que
       // autenticar al emisor. Con 401 el cliente sabe que debe pedir credenciales.
       if (err instanceof SinSesionHaciendaError) {

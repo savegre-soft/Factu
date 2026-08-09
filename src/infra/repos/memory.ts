@@ -840,10 +840,6 @@ export class ComprobanteRepositoryMemoria implements ComprobanteRepository {
     return this.comprobantes.get(clave) ?? null;
   }
 
-  async listarPorEmisor(cedula: string): Promise<ComprobanteRecord[]> {
-    return [...this.comprobantes.values()].filter((c) => c.cedulaEmisor === cedula);
-  }
-
   /** Quita los XML de una fila para no exponerlos en los listados. */
   private static resumen(c: ComprobanteRecord): ComprobanteResumen {
     const { xmlFirmado: _x, respuestaXml: _r, ...resto } = c;
@@ -975,5 +971,12 @@ export class ComprobanteRepositoryMemoria implements ComprobanteRepository {
 
   async proximoConsecutivo(serie: SerieConsecutivo): Promise<number> {
     return this.ultimoUsado(serie) + 1;
+  }
+
+  async liberarConsecutivo(serie: SerieConsecutivo, numero: number): Promise<boolean> {
+    const clave = ComprobanteRepositoryMemoria.claveSerie(serie);
+    if (this.series.get(clave) !== numero) return false;
+    this.series.set(clave, numero - 1);
+    return true;
   }
 }

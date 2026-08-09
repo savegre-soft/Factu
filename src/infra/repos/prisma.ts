@@ -982,11 +982,6 @@ export class ComprobanteRepositoryPrisma implements ComprobanteRepository {
     return row ? aComprobanteRecord(row) : null;
   }
 
-  async listarPorEmisor(cedula: string): Promise<ComprobanteRecord[]> {
-    const rows = await this.db.comprobante.findMany({ where: { cedulaEmisor: cedula } });
-    return rows.map(aComprobanteRecord);
-  }
-
   /** Columnas de listado: deja fuera los XML, que son el 99% del peso. */
   private static readonly COLUMNAS_RESUMEN = {
     clave: true,
@@ -1155,6 +1150,17 @@ export class ComprobanteRepositoryPrisma implements ComprobanteRepository {
         return row.ultimo;
       }
     }
+  }
+
+  async liberarConsecutivo(serie: SerieConsecutivo, numero: number): Promise<boolean> {
+    // El `where` con el valor esperado hace la comprobación y el decremento en
+    // una sola sentencia: si otra emisión ya avanzó, no coincide y no borra su
+    // número.
+    const { count } = await this.db.consecutivoEmisor.updateMany({
+      where: { ...serie, ultimo: numero },
+      data: { ultimo: numero - 1 },
+    });
+    return count > 0;
   }
 
   async proximoConsecutivo(serie: SerieConsecutivo): Promise<number> {

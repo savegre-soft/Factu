@@ -16,6 +16,7 @@ import { z } from "zod";
 import { env } from "../config/env.js";
 import { usuarioService } from "../services/usuarios/index.js";
 import { registrarAuditoria } from "../services/auditoria/index.js";
+import { ponerCookieSesion, borrarCookieSesion } from "../plugins/sesionCookie.js";
 import {
   cuentaService,
   passwordResetService,
@@ -29,6 +30,7 @@ import type { JwtPayload } from "../plugins/auth.js";
 import {
   authRegistroSchema,
   authLoginSchema,
+  authLogoutSchema,
   authYoSchema,
   perfilActualizarSchema,
   perfilPasswordSchema,
@@ -99,6 +101,9 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     try {
       const { tenant, usuario } = await usuarioService.registrar(parsed.data);
       const token = firmar({ sub: usuario.id, tenantId: tenant.id, rol: usuario.rol, email: usuario.email });
+      // La sesión del navegador va en la cookie httpOnly; el token en el cuerpo
+      // se mantiene para clientes que no son un navegador.
+      ponerCookieSesion(reply, token);
       return reply.status(201).send({
         token,
         tenant: { id: tenant.id, nombre: tenant.nombre },
@@ -126,7 +131,14 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       recurso: "sesion",
       detalle: `Inicio de sesión de ${usuario.email}`,
     });
+    ponerCookieSesion(reply, token);
     return { token, usuario: { id: usuario.id, email: usuario.email, nombre: usuario.nombre, rol: usuario.rol } };
+  });
+
+  /** Cierra la sesión del navegador borrando la cookie. */
+  app.post("/auth/logout", { schema: authLogoutSchema }, async (_request, reply) => {
+    borrarCookieSesion(reply);
+    return { ok: true };
   });
 
   // --- OAuth (Google / Microsoft) ---
@@ -204,7 +216,10 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
         recurso: "sesion",
         detalle: `Inicio de sesión con ${provider} (${usuario.email})`,
       });
-      return reply.redirect(`${okBase}#token=${token}`);
+      // Con la cookie ya no hace falta pasar el token por la URL, donde queda
+      // en el historial del navegador.
+      ponerCookieSesion(reply, token);
+      return reply.redirect(`${okBase}?sesion=iniciada`);
     } catch (err) {
       return fail((err as Error).message);
     }
