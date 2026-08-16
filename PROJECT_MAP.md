@@ -70,9 +70,9 @@ Usa el modelo `EnvioComprobante`.
 | Módulo | Contenido |
 |---|---|
 | `clave/clave.ts` | Clave numérica (50 díg.) y consecutivo (20 díg.). `TipoComprobante` incluye FEC (08), FEE (09) y REP (10). |
-| `factura/types.ts` | Tipos de negocio: `Emisor`, `Receptor`, `LineaDetalle`, `Moneda`, `InformacionReferencia`, enums `TipoIdentificacion`/`CondicionVenta`/`TipoMedioPago`/`CodigoImpuesto`. |
-| `factura/facturaXml.ts` | Generador de XML v4.4. `TipoDocumento`: `FE`, `TE`, `NC`, `ND`, `FEC` (factura de compra), `FEE` (factura de exportación). Exporta `fechaEmisionISO()`. |
-| `factura/totales.ts` | Cálculo de totales/impuestos/descuentos. |
+| `factura/types.ts` | Tipos de negocio: `Emisor`, `Receptor`, `LineaDetalle`, `Moneda`, `InformacionReferencia`, `Exoneracion`, y los catálogos completos del XSD v4.4: `TipoIdentificacion`, `CondicionVenta`, `TipoMedioPago`, `CodigoImpuesto`, `CodigoDescuento`, `TipoExoneracion`, `TipoDocReferencia`, `CodigoReferencia`. |
+| `factura/facturaXml.ts` | Generador de XML v4.4. `TipoDocumento`: `FE`, `TE`, `NC`, `ND`, `FEC` (factura de compra), `FEE` (factura de exportación). Cada uno declara su **variante de línea** porque los esquemas recortan la cola de forma distinta: la exportación va sin `BaseImponible`/`ImpuestoNeto` y admite `PartidaArancelaria`; la de compra no lleva `ImpuestoAsumidoEmisorFabrica` y exige el código de actividad del receptor. Emite el nodo `Exoneracion`. Exporta `fechaEmisionISO()`. |
+| `factura/totales.ts` | Cálculo de totales, impuestos, descuentos y montos exonerados (`totalExonerado`). |
 | `reciboPago/reciboPagoXml.ts` | XML del Recibo Electrónico de Pago (REP, v4.4): estructura propia, sin CABYS ni ubicación, `InformacionReferencia` obligatoria. |
 | `mensajeReceptor/mensajeReceptor.ts` | XML de Mensaje Receptor (aceptar/rechazar/parcial). |
 | `documentoRecibido/parseComprobante.ts` | Parseo de un XML de comprobante recibido. |
@@ -109,6 +109,18 @@ Usa el modelo `EnvioComprobante`.
 `DocumentoRecibido`, `Buzon`, `SmtpSaliente`, `EnvioComprobante`, `Webhook`,
 `WebhookEntrega`, `NotificationChannel`, `NotificationMessage`, `Mensaje`,
 `RegistroAuditoria`, `RegistroLog`.
+
+## Despliegue
+
+| Archivo | Qué hace |
+|---|---|
+| `docker-compose.yml` | Stack de la laptop: API + PostgreSQL, con el 5432 publicado y `/docs` encendidas. |
+| `docker-compose.server.yml` | Stack del servidor `mecsa00` (192.168.1.3): la base **no** publica el 5432 (ahí ya está `supabase-pooler`), `APP_URL`/`API_PUBLIC_URL` apuntan a la IP real, y lleva la política EPES. Se usa con `docker compose -f docker-compose.server.yml up -d --build`. |
+| `Dockerfile` | Imagen multi-etapa (builder → runtime). Incluye `scripts/` para poder correr el rotador de llave con `docker compose exec`. |
+
+La webapp vive en el repo **FactuWeb** y se despliega aparte
+(`docker compose --profile prod up -d web-prod`, nginx en el 8080 haciendo proxy
+`/api` → API y `/hacienda-pub` → Hacienda).
 
 ## Scripts de mantenimiento (`scripts/`)
 

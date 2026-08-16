@@ -256,11 +256,19 @@ Documentación viva del repositorio: [PROJECT_MAP.md](./PROJECT_MAP.md) ·
 - [x] **12.** Consecutivos gestionados por el servidor (contador atómico por serie)
 - [x] **13.** Endurecimiento: helmet, rate limit, cookie `httpOnly`, CSRF, docs off en prod
 
+### ✅ Primera emisión aceptada
+
+> **2026-08-09** — Hacienda aceptó una factura emitida contra su **sandbox real**, con
+> certificado y credenciales reales. La cadena completa —clave, XML v4.4, firma con
+> política, envío y consulta de estado— funciona de punta a punta.
+
 ### 🔜 Pendiente para producción
 
-> - 🌐 **Prueba end-to-end contra el sandbox real** de Hacienda (credenciales + certificado reales)
-> - 📐 Validación contra el **XSD oficial** v4.4
-> - 🔑 Confirmar que la **política de firma** configurada sigue siendo la resolución vigente
+> - 🧾 **Ejercitar los tipos que faltan**: descuentos, líneas exentas, exoneración, notas de
+>   crédito y débito, factura de compra, de exportación y REP. Están verificados contra el
+>   XSD y con tests, pero un rechazo por formato solo se descubre enviándolo.
+> - 📐 Validación **automática** contra el XSD oficial v4.4 (hoy el contraste fue manual)
+> - 🔑 Confirmar la **política de firma** en producción (en pruebas la actual es aceptada)
 
 ---
 

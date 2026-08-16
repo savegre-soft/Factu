@@ -28,6 +28,11 @@ sola plataforma.
 - **No perder comprobantes en el limbo**: si Hacienda tarda en responder, el
   sistema vuelve a preguntar solo hasta obtener el veredicto, y recién ahí avisa y
   entrega el comprobante.
+- **Facturar a quien está exonerado**: zonas francas, instituciones exoneradas
+  o diplomáticos. El impuesto se calcula y se rebaja en el porcentaje exonerado,
+  declarando el documento que lo respalda.
+- **Seguir facturando si Hacienda se cae**: el comprobante se emite marcado
+  **en contingencia** y se transmite cuando el servicio vuelve.
 - **Guardar avances**: si estás llenando una factura y no la terminás, queda
   como **borrador** para retomarla después.
 - **Recordar a tus clientes**: una vez que facturaste a alguien, la próxima vez
@@ -73,17 +78,22 @@ sola plataforma.
 
 ### Qué falta para producción real
 
-Hoy el sistema funciona de punta a punta contra un ambiente de **pruebas**
-(sandbox propio). Antes de facturar de verdad a clientes reales, falta:
+El **9 de agosto de 2026 Hacienda aceptó la primera factura** emitida por el
+sistema en su sandbox real, con certificado y credenciales reales. Eso confirmó
+que la cadena completa funciona: clave, XML v4.4, firma con política, envío y
+consulta de estado. Lo que falta antes de facturarle a clientes reales:
 
-- Emitir al menos un comprobante contra el **sandbox real de Hacienda**, con
-  credenciales y certificado reales. Las direcciones de conexión de pruebas y de
-  producción ya están configuradas en el sistema, pero nadie las ha estrenado.
-- Validar que cada factura cumple exactamente el formato que Hacienda espera
-  (hoy se validan las reglas de negocio, falta el chequeo formal contra su
-  plantilla oficial).
-- Confirmar que la "política de firma" que trae configurada el sistema sigue
-  siendo la vigente que exige Hacienda.
+- **Probar los demás tipos de comprobante.** La factura aceptada no llevaba
+  descuento ni línea exenta, y no se ha emitido todavía una nota de crédito, una
+  factura de compra, una de exportación ni un recibo de pago. Todos están
+  verificados contra el esquema oficial y con pruebas automatizadas, pero un
+  rechazo por formato solo se descubre enviándolo. La aplicación web lleva la
+  cuenta de cuáles faltan en su panel de ambiente.
+- **Pasar el sistema a producción** (`HACIENDA_ENV=prod`) y confirmar allí que la
+  "política de firma" configurada sigue siendo la resolución vigente: en pruebas
+  la actual es aceptada.
+- **Revisar que cada emisor tenga su certificado propio**: sin él se firma con
+  uno de prueba que Hacienda rechaza en producción.
 
 Ver el detalle fila por fila en [REQUIREMENTS.md](./REQUIREMENTS.md).
 
@@ -123,6 +133,28 @@ docker compose up --build
 Otros scripts: `npm test` (Vitest), `npm run typecheck`, `npm run build`,
 `npm start` (versión compilada). Variables de entorno completas en
 [docs/configuracion.md](./docs/configuracion.md).
+
+### Dónde está corriendo
+
+| Entorno | Qué | Cómo se levanta |
+|---|---|---|
+| Laptop | API + PostgreSQL | `docker compose up -d --build` |
+| Servidor `mecsa00` (192.168.1.3) | API en `:3000`, webapp en `:8080` | `docker compose -f docker-compose.server.yml up -d --build` en `~/Factu`, y `docker compose --profile prod up -d web-prod` en `~/FactuWeb` |
+
+El servidor es **compartido** con otros proyectos (supabase, wapi, e7r, e8a,
+pulpepos), así que este stack solo toma los puertos 3000 y 8080; la base de datos
+no publica el 5432 porque ahí ya escucha `supabase-pooler`. El código no se
+despliega con git: `~/Factu` y `~/FactuWeb` se sincronizan copiando el árbol de
+fuentes por ssh y reconstruyendo la imagen en el servidor.
+
+Dos cosas que hay que respetar al desplegar:
+
+- **El `.env` y la base van juntos.** Los `.p12` y los tokens del IDP se guardan
+  cifrados con `FACTU_MASTER_KEY`. Restaurar un dump contra una llave distinta no
+  da error: los datos quedan ilegibles y solo se descubre al intentar firmar.
+- **`APP_URL` tiene que ser el origen real del navegador** (`http://192.168.1.3:8080`).
+  Es el `Origin` que acepta el chequeo anti-CSRF; con `localhost` toda escritura
+  desde la webapp respondería 403.
 
 ### Arquitectura, en breve
 

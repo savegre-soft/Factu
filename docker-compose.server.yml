@@ -1,0 +1,81 @@
+# Despliegue en servidor (mecsa00 / 192.168.1.3).
+#
+#   docker compose -f docker-compose.server.yml up -d --build
+#
+# Diferencias con docker-compose.yml (que es para la laptop):
+#   · La base NO publica el puerto 5432 en el host: ese servidor ya tiene un
+#     supabase-pooler escuchando ahí. Solo la alcanza `app` por la red interna.
+#   · APP_URL / API_PUBLIC_URL apuntan a la IP real del servidor, no a localhost.
+#     APP_URL es además el `Origin` que se acepta en el chequeo anti-CSRF de las
+#     peticiones autenticadas por cookie, así que tiene que ser el origen desde
+#     donde el navegador carga FactuWeb (puerto 8080).
+#
+# Los secretos (FACTU_MASTER_KEY, JWT_SECRET) vienen del .env de al lado, que no
+# se versiona. Tienen que ser LOS MISMOS con los que se cifraron los .p12 y los
+# tokens de Hacienda guardados en la base: cambiarlos deja esos datos ilegibles.
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: factu
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d factu"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PORT: 3000
+      NODE_ENV: production
+      # Red local: la documentación interactiva se deja encendida a propósito.
+      DOCS_PUBLICAS: "true"
+      PERSISTENCIA: prisma
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/factu?schema=public
+      FACTU_MASTER_KEY: ${FACTU_MASTER_KEY:?define FACTU_MASTER_KEY en .env}
+      JWT_SECRET: ${JWT_SECRET:?define JWT_SECRET en .env}
+      JWT_EXPIRES_IN: "8h"
+      # Ambiente de pruebas de Hacienda.
+      HACIENDA_ENV: stag
+      HACIENDA_IDP_URL: https://idp.comprobanteselectronicos.go.cr/auth/realms/rut-stag/protocol/openid-connect/token
+      HACIENDA_API_URL: https://api-sandbox.comprobanteselectronicos.go.cr/recepcion/v1
+      HACIENDA_CLIENT_ID: api-stag
+      # Política de firma XAdES-EPES. Sin esto la firma sale BES y Hacienda la
+      # rechaza: "La firma del documento no tiene el Policy Id".
+      HACIENDA_POLICY_URL: https://www.hacienda.go.cr/docs/Resolucion_Comprobantes_Electronicos_DGT-R-48-2016_v4.1.pdf
+      HACIENDA_POLICY_HASH: vPjYEG5pdxOi+6DB29+KqF3I4VOcMEaixzE3d2iUiJk=
+      PROVEEDOR_SISTEMAS: ""
+      # Dónde vive el front (origen aceptado en el chequeo anti-CSRF) y esta API.
+      APP_URL: http://192.168.1.3:8080
+      API_PUBLIC_URL: http://192.168.1.3:3000
+      # Entrega del comprobante al cliente por correo (rellenar para activarla).
+      ENTREGA_ENABLED: "true"
+      SMTP_HOST: ""
+      SMTP_PORT: "587"
+      SMTP_SECURE: "false"
+      SMTP_USER: ""
+      SMTP_PASS: ""
+      SMTP_FROM: ""
+    command: sh -c "npx prisma db push --skip-generate && node dist/main.js"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    ports:
+      - "3000:3000"
+
+volumes:
+  pgdata:
