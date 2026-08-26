@@ -3,6 +3,8 @@ import {
   EmisorRepositoryMemoria,
   ComprobanteRepositoryMemoria,
   ConsecutivoRepositoryMemoria,
+  SuscripcionRepositoryMemoria,
+  PagoSuscripcionRepositoryMemoria,
 } from "./memory.js";
 
 describe("EmisorRepositoryMemoria", () => {
@@ -100,5 +102,52 @@ describe("ConsecutivoRepositoryMemoria", () => {
 
     await repo.registrarSiUsado("3101", 1, 1, "01", 3); // menor: no retrocede
     expect(await repo.siguiente("3101", 1, 1, "01")).toBe(12);
+  });
+});
+
+describe("SuscripcionRepositoryMemoria", () => {
+  const datos = {
+    plan: "básico",
+    estado: "activa" as const,
+    moneda: "CRC",
+    ciclo: "mensual" as const,
+    iniciaEn: new Date("2026-01-01"),
+  };
+
+  it("upsert crea y luego actualiza conservando id y createdAt", async () => {
+    const repo = new SuscripcionRepositoryMemoria();
+    const creada = await repo.upsert("t1", datos);
+    const actualizada = await repo.upsert("t1", { ...datos, plan: "pro", estado: "suspendida" });
+
+    expect(actualizada.id).toBe(creada.id);
+    expect(actualizada.createdAt).toEqual(creada.createdAt);
+    expect(actualizada.plan).toBe("pro");
+    expect(actualizada.estado).toBe("suspendida");
+  });
+
+  it("buscarPorTenant devuelve null si el tenant no tiene suscripción", async () => {
+    const repo = new SuscripcionRepositoryMemoria();
+    expect(await repo.buscarPorTenant("nadie")).toBeNull();
+  });
+
+  it("listarTodas incluye las suscripciones de todos los tenants", async () => {
+    const repo = new SuscripcionRepositoryMemoria();
+    await repo.upsert("t1", datos);
+    await repo.upsert("t2", { ...datos, plan: "pro" });
+    const todas = await repo.listarTodas();
+    expect(todas.map((s) => s.tenantId).sort()).toEqual(["t1", "t2"]);
+  });
+});
+
+describe("PagoSuscripcionRepositoryMemoria", () => {
+  it("crea un pago y lo lista solo para su suscripción", async () => {
+    const repo = new PagoSuscripcionRepositoryMemoria();
+    await repo.crear({ id: "p1", suscripcionId: "s1", monto: 100, moneda: "CRC", metodo: "transferencia" });
+    await repo.crear({ id: "p2", suscripcionId: "s2", monto: 200, moneda: "CRC", metodo: "tarjeta" });
+
+    const deS1 = await repo.listarPorSuscripcion("s1");
+    expect(deS1).toHaveLength(1);
+    expect(deS1[0]!.id).toBe("p1");
+    expect(deS1[0]!.referencia).toBeNull();
   });
 });

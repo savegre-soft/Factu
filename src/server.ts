@@ -22,6 +22,7 @@ import { apiKeyRoutes } from "./routes/apiKeys.js";
 import { webhookRoutes } from "./routes/webhooks.js";
 import { auditoriaRoutes } from "./routes/auditoria.js";
 import { notificacionesRoutes } from "./routes/notificaciones.js";
+import { plataformaRoutes } from "./routes/plataforma.js";
 import { registrarLog } from "./services/logs/index.js";
 
 /** Construye la instancia de Fastify con Swagger, autenticación y rutas. */
@@ -67,6 +68,7 @@ export function buildServer(): FastifyInstance {
   app.register(webhookRoutes); // /webhooks/*  (integraciones salientes)
   app.register(auditoriaRoutes); // /auditoria, /logs  (registro, solo admin)
   app.register(notificacionesRoutes); // /notification-*  (canales de comunicación)
+  app.register(plataformaRoutes); // /plataforma/*  (panel interno de Savegre, cross-tenant)
 
   return app;
 }

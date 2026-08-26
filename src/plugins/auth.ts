@@ -13,6 +13,11 @@ import fastifyJwt from "@fastify/jwt";
 import { env } from "../config/env.js";
 import { Permiso, Rol, rolTienePermiso } from "../domain/auth/roles.js";
 import { apiKeyService, API_KEY_PREFIJO } from "../services/apiKeys/index.js";
+import {
+  credencialPlataformaService,
+  CREDENCIAL_PLATAFORMA_PREFIJO,
+  type PrincipalPlataforma,
+} from "../services/plataforma/index.js";
 
 export interface JwtPayload {
   sub: string;
@@ -43,9 +48,20 @@ function tokenDeAuthorization(request: FastifyRequest): string | undefined {
 }
 
 declare module "fastify" {
+  interface FastifyRequest {
+    /** Poblado por `requierePlataforma`; solo rutas `/plataforma/*` lo usan. */
+    plataforma: PrincipalPlataforma;
+  }
   interface FastifyInstance {
     authenticate: preHandlerHookHandler;
     requierePermiso: (permiso: Permiso) => preHandlerHookHandler;
+    /**
+     * Guarda completamente separada de `authenticate`/`requierePermiso`: solo
+     * acepta una `CredencialPlataforma` (prefijo `platform_`), nunca un JWT
+     * de usuario ni una `ApiKey` de tenant. Deja el principal en
+     * `request.plataforma` (nunca en `request.user`).
+     */
+    requierePlataforma: preHandlerHookHandler;
   }
 }
 
@@ -105,5 +121,19 @@ export function registrarAuth(app: FastifyInstance): void {
         });
       }
     };
+  });
+
+  app.decorate("requierePlataforma", async function (request: FastifyRequest, reply: FastifyReply) {
+    const token = tokenDeAuthorization(request);
+    if (!token || !token.startsWith(CREDENCIAL_PLATAFORMA_PREFIJO)) {
+      reply.status(401).send({ error: "Credencial de plataforma requerida" });
+      return;
+    }
+    const principal = await credencialPlataformaService.autenticar(token);
+    if (!principal) {
+      reply.status(401).send({ error: "Credencial de plataforma inválida, revocada o expirada" });
+      return;
+    }
+    request.plataforma = principal;
   });
 }

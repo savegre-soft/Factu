@@ -6,6 +6,7 @@
  *
  * Requiere: `npm run prisma:generate` y una base con las migraciones aplicadas.
  */
+import { randomUUID } from "node:crypto";
 import { PrismaClient } from "@prisma/client";
 import type { Rol } from "../../domain/auth/roles.js";
 import type { SecretoSellado } from "../crypto/secretBox.js";
@@ -86,6 +87,18 @@ import type {
   PasswordResetRecord,
   PasswordResetRepository,
   NuevoPasswordReset,
+  SuscripcionRecord,
+  SuscripcionRepository,
+  DatosSuscripcion,
+  EstadoSuscripcion,
+  CicloCobro,
+  TipoDescuento,
+  PagoSuscripcionRecord,
+  PagoSuscripcionRepository,
+  NuevoPagoSuscripcion,
+  CredencialPlataformaRecord,
+  CredencialPlataformaRepository,
+  NuevaCredencialPlataforma,
 } from "./types.js";
 
 export const prisma = new PrismaClient();
@@ -170,6 +183,10 @@ export class TenantRepositoryPrisma implements TenantRepository {
 
   async buscar(id: string): Promise<TenantRecord | null> {
     return this.db.tenant.findUnique({ where: { id } });
+  }
+
+  async listarTodos(): Promise<TenantRecord[]> {
+    return this.db.tenant.findMany({ orderBy: { createdAt: "asc" } });
   }
 }
 
@@ -981,4 +998,108 @@ function aComprobanteRecord(row: ComprobanteRow): ComprobanteRecord {
   if (row.respuestaXml) record.respuestaXml = row.respuestaXml;
   if (row.referenciaExterna) record.referenciaExterna = row.referenciaExterna;
   return record;
+}
+
+type SuscripcionRow = {
+  id: string;
+  tenantId: string;
+  plan: string;
+  estado: string;
+  moneda: string;
+  ciclo: string;
+  descuentoTipo: string | null;
+  descuentoValor: number | null;
+  descuentoRazon: string | null;
+  iniciaEn: Date;
+  renuevaEn: Date | null;
+  notas: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+function aSuscripcionRecord(row: SuscripcionRow): SuscripcionRecord {
+  return {
+    ...row,
+    estado: row.estado as EstadoSuscripcion,
+    ciclo: row.ciclo as CicloCobro,
+    descuentoTipo: row.descuentoTipo as TipoDescuento | null,
+  };
+}
+
+export class SuscripcionRepositoryPrisma implements SuscripcionRepository {
+  constructor(private readonly db: PrismaClient) {}
+
+  async upsert(tenantId: string, datos: DatosSuscripcion): Promise<SuscripcionRecord> {
+    const data = {
+      plan: datos.plan,
+      estado: datos.estado,
+      moneda: datos.moneda,
+      ciclo: datos.ciclo,
+      descuentoTipo: datos.descuentoTipo ?? null,
+      descuentoValor: datos.descuentoValor ?? null,
+      descuentoRazon: datos.descuentoRazon ?? null,
+      iniciaEn: datos.iniciaEn,
+      renuevaEn: datos.renuevaEn ?? null,
+      notas: datos.notas ?? null,
+    };
+    const row = await this.db.suscripcion.upsert({
+      where: { tenantId },
+      update: data,
+      create: { id: randomUUID(), tenantId, ...data },
+    });
+    return aSuscripcionRecord(row);
+  }
+
+  async buscarPorTenant(tenantId: string): Promise<SuscripcionRecord | null> {
+    const row = await this.db.suscripcion.findUnique({ where: { tenantId } });
+    return row ? aSuscripcionRecord(row) : null;
+  }
+
+  async listarTodas(): Promise<SuscripcionRecord[]> {
+    const rows = await this.db.suscripcion.findMany();
+    return rows.map(aSuscripcionRecord);
+  }
+}
+
+export class PagoSuscripcionRepositoryPrisma implements PagoSuscripcionRepository {
+  constructor(private readonly db: PrismaClient) {}
+
+  async crear(input: NuevoPagoSuscripcion): Promise<PagoSuscripcionRecord> {
+    return this.db.pagoSuscripcion.create({ data: input });
+  }
+
+  async listarPorSuscripcion(suscripcionId: string): Promise<PagoSuscripcionRecord[]> {
+    return this.db.pagoSuscripcion.findMany({
+      where: { suscripcionId },
+      orderBy: { pagadoEn: "desc" },
+    });
+  }
+}
+
+export class CredencialPlataformaRepositoryPrisma implements CredencialPlataformaRepository {
+  constructor(private readonly db: PrismaClient) {}
+
+  async crear(input: NuevaCredencialPlataforma): Promise<CredencialPlataformaRecord> {
+    return this.db.credencialPlataforma.create({ data: input });
+  }
+
+  async buscarPorId(id: string): Promise<CredencialPlataformaRecord | null> {
+    return this.db.credencialPlataforma.findUnique({ where: { id } });
+  }
+
+  async buscarPorKeyId(keyId: string): Promise<CredencialPlataformaRecord | null> {
+    return this.db.credencialPlataforma.findUnique({ where: { keyId } });
+  }
+
+  async listar(): Promise<CredencialPlataformaRecord[]> {
+    return this.db.credencialPlataforma.findMany();
+  }
+
+  async marcarUso(id: string): Promise<void> {
+    await this.db.credencialPlataforma.update({ where: { id }, data: { lastUsedAt: new Date() } });
+  }
+
+  async revocar(id: string): Promise<void> {
+    await this.db.credencialPlataforma.update({ where: { id }, data: { revokedAt: new Date() } });
+  }
 }

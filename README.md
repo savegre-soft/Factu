@@ -239,7 +239,8 @@ src/
 
 ```bash
 npm run dev          # 🔥 desarrollo con recarga
-npm test             # ✅ suite de tests
+npm test             # ✅ suite de tests (Vitest, unitarios)
+npm run test:e2e     # 🎭 E2E de API con Playwright (sin navegador — ver e2e/)
 npm run typecheck    # 🔎 chequeo de tipos
 npm run build        # 📦 compila a dist/
 npm start            # ▶️  ejecuta la versión compilada

@@ -48,6 +48,13 @@ sola plataforma.
   después.
 - **Chat interno**: los usuarios de una misma organización se pueden escribir
   entre sí dentro del sistema.
+- **Panel interno de Savegre** (2026-08-25/26): además de la app de
+  facturación, Factu expone un canal de solo-servicio (`/plataforma/*`,
+  credencial propia, separada de las cuentas de las organizaciones) para que
+  **Savegre Center** — el panel interno donde Savegre Soft administra todos
+  sus productos (RestroCloud, Factu, Wapi) desde un solo lugar — pueda ver
+  los tenants de Factu y gestionar su suscripción/cobro, igual que ya hace
+  con RestroCloud.
 
 ### Qué falta para producción real
 

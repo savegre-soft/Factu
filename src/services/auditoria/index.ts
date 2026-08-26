@@ -53,11 +53,14 @@ export function listarAuditoria(
   return auditoriaRepository.listarPorTenant(tenantId, filtro);
 }
 
-/** Construye el actor a partir del principal autenticado (JWT o API key). */
+/** Construye el actor a partir del principal autenticado (JWT, API key, o credencial de plataforma). */
 export function actorDesde(
-  user: { sub: string; email?: string; kind?: "user" | "service"; label?: string },
+  user: { sub: string; email?: string; kind?: "user" | "service" | "plataforma"; label?: string },
   ip?: string | null,
 ): Actor {
+  if (user.kind === "plataforma") {
+    return { id: user.sub, nombre: user.label ?? "Savegre Center", tipo: "plataforma", ip: ip ?? null };
+  }
   const esServicio = user.kind === "service";
   return {
     id: user.sub,

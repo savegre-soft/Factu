@@ -4,6 +4,7 @@
  * Útil para desarrollo y tests (no requiere base de datos). Los datos se pierden
  * al reiniciar; para producción se usa la implementación Prisma.
  */
+import { randomUUID } from "node:crypto";
 import type {
   ApiKeyRecord,
   ApiKeyRepository,
@@ -76,6 +77,15 @@ import type {
   NuevoNotificationMessage,
   CambiosNotificationMessage,
   FiltroNotificacion,
+  SuscripcionRecord,
+  SuscripcionRepository,
+  DatosSuscripcion,
+  PagoSuscripcionRecord,
+  PagoSuscripcionRepository,
+  NuevoPagoSuscripcion,
+  CredencialPlataformaRecord,
+  CredencialPlataformaRepository,
+  NuevaCredencialPlataforma,
 } from "./types.js";
 
 export class TenantRepositoryMemoria implements TenantRepository {
@@ -85,6 +95,10 @@ export class TenantRepositoryMemoria implements TenantRepository {
     const record: TenantRecord = { ...input, createdAt: new Date() };
     this.tenants.set(input.id, record);
     return record;
+  }
+
+  async listarTodos(): Promise<TenantRecord[]> {
+    return [...this.tenants.values()];
   }
 
   async buscar(id: string): Promise<TenantRecord | null> {
@@ -820,5 +834,98 @@ export class ConsecutivoRepositoryMemoria implements ConsecutivoRepository {
     const llave = this.llave(cedulaEmisor, sucursal, terminal, tipo);
     const actual = this.contadores.get(llave) ?? 0;
     if (valor > actual) this.contadores.set(llave, valor);
+  }
+}
+
+export class SuscripcionRepositoryMemoria implements SuscripcionRepository {
+  private readonly suscripciones = new Map<string, SuscripcionRecord>();
+
+  async upsert(tenantId: string, datos: DatosSuscripcion): Promise<SuscripcionRecord> {
+    const existente = [...this.suscripciones.values()].find((s) => s.tenantId === tenantId);
+    const record: SuscripcionRecord = {
+      id: existente?.id ?? randomUUID(),
+      tenantId,
+      plan: datos.plan,
+      estado: datos.estado,
+      moneda: datos.moneda,
+      ciclo: datos.ciclo,
+      descuentoTipo: datos.descuentoTipo ?? null,
+      descuentoValor: datos.descuentoValor ?? null,
+      descuentoRazon: datos.descuentoRazon ?? null,
+      iniciaEn: datos.iniciaEn,
+      renuevaEn: datos.renuevaEn ?? null,
+      notas: datos.notas ?? null,
+      createdAt: existente?.createdAt ?? new Date(),
+      updatedAt: new Date(),
+    };
+    this.suscripciones.set(record.id, record);
+    return record;
+  }
+
+  async buscarPorTenant(tenantId: string): Promise<SuscripcionRecord | null> {
+    return [...this.suscripciones.values()].find((s) => s.tenantId === tenantId) ?? null;
+  }
+
+  async listarTodas(): Promise<SuscripcionRecord[]> {
+    return [...this.suscripciones.values()];
+  }
+}
+
+export class PagoSuscripcionRepositoryMemoria implements PagoSuscripcionRepository {
+  private readonly pagos = new Map<string, PagoSuscripcionRecord>();
+
+  async crear(input: NuevoPagoSuscripcion): Promise<PagoSuscripcionRecord> {
+    const record: PagoSuscripcionRecord = {
+      ...input,
+      referencia: input.referencia ?? null,
+      notas: input.notas ?? null,
+      registradoPor: input.registradoPor ?? null,
+      pagadoEn: new Date(),
+    };
+    this.pagos.set(input.id, record);
+    return record;
+  }
+
+  async listarPorSuscripcion(suscripcionId: string): Promise<PagoSuscripcionRecord[]> {
+    return [...this.pagos.values()].filter((p) => p.suscripcionId === suscripcionId);
+  }
+}
+
+export class CredencialPlataformaRepositoryMemoria implements CredencialPlataformaRepository {
+  private readonly credenciales = new Map<string, CredencialPlataformaRecord>();
+
+  async crear(input: NuevaCredencialPlataforma): Promise<CredencialPlataformaRecord> {
+    const record: CredencialPlataformaRecord = {
+      ...input,
+      lastUsedAt: null,
+      revokedAt: null,
+      createdAt: new Date(),
+    };
+    this.credenciales.set(input.id, record);
+    return record;
+  }
+
+  async buscarPorId(id: string): Promise<CredencialPlataformaRecord | null> {
+    return this.credenciales.get(id) ?? null;
+  }
+
+  async buscarPorKeyId(keyId: string): Promise<CredencialPlataformaRecord | null> {
+    return [...this.credenciales.values()].find((c) => c.keyId === keyId) ?? null;
+  }
+
+  async listar(): Promise<CredencialPlataformaRecord[]> {
+    return [...this.credenciales.values()];
+  }
+
+  async marcarUso(id: string): Promise<void> {
+    const existente = this.credenciales.get(id);
+    if (existente) this.credenciales.set(id, { ...existente, lastUsedAt: new Date() });
+  }
+
+  async revocar(id: string): Promise<void> {
+    const existente = this.credenciales.get(id);
+    if (existente && !existente.revokedAt) {
+      this.credenciales.set(id, { ...existente, revokedAt: new Date() });
+    }
   }
 }

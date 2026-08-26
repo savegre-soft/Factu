@@ -46,6 +46,7 @@ ruta.
 | `auditoria.ts` | `/auditoria`, `/logs` | `services/auditoria`, `services/logs` | modelos `RegistroAuditoria`, `RegistroLog` |
 | `notificaciones.ts` | `/notification-*`, `/notifications` | `services/notificaciones` (`notificacionesService`, `notificarEvento`, `poller.ts`) | modelos `NotificationChannel`, `NotificationMessage` |
 | `_guards.ts` | — | Guards de tenant/permiso reutilizados por las rutas: `emisorDelTenant()` (existe + pertenece al tenant + dentro del scope de emisores de una API key), `puedeGestionarEmisor()` (B7, 2026-07-30 — humano admin, o API key `facturador` scoped a esa cédula) | `domain/auth/roles.ts` |
+| `plataforma.ts` | `/plataforma/*` | `services/plataforma` (`credencialPlataformaService`, `suscripcionService`) | `domain`: n/a (sin dominio propio); modelos `Suscripcion`, `PagoSuscripcion`, `CredencialPlataforma` (L1-L7, 2026-08-25/26) |
 
 La entrega al cliente (`services/entrega/*`: `entregaService`, `comprobantePdf.ts`,
 `emailSender.ts`, `plantillaCorreo.ts`, `poller.ts`) se dispara desde `comprobante.ts`
@@ -88,6 +89,7 @@ reusa `parsearParaPdf`/`generarFacturaPdf` de `comprobantePdf.ts` sin duplicar l
 | `notificaciones` | `notificacionesService`, `notificarEvento()`, `providerRegistry` | Proveedores: `twilioSms`, `whatsappCloud`, `slack`, `teams`, `bitrix24` (patrón Strategy, `NotificationProvider`). |
 | `usuarios` | `usuarioService` | |
 | `webhooks` | `webhookService`, `emitirEvento()` | |
+| `plataforma` | `credencialPlataformaService`, `suscripcionService` | Panel interno de Savegre (Savegre Center) — cross-tenant, autenticación separada (`app.requierePlataforma`, nunca `request.user`). |
 
 ## Modelos Prisma (`prisma/schema.prisma`)
 
@@ -96,7 +98,16 @@ reusa `parsearParaPdf`/`generarFacturaPdf` de `comprobantePdf.ts` sin duplicar l
 atómico de consecutivo por emisor+sucursal+terminal+tipo), `Borrador`,
 `DocumentoRecibido`, `Buzon`, `SmtpSaliente`, `EnvioComprobante`, `Webhook`,
 `WebhookEntrega`, `NotificationChannel`, `NotificationMessage`, `Mensaje`,
-`RegistroAuditoria`, `RegistroLog`.
+`RegistroAuditoria`, `RegistroLog`, `Suscripcion`, `PagoSuscripcion` (L4/L5,
+2026-08-26 — suscripción y cobros de Savegre a un tenant, panel interno),
+`CredencialPlataforma` (L1 — credencial global, sin `tenantId`).
+
+## Testing
+
+| Archivo | Qué es |
+|---|---|
+| `vitest.config.ts` | Config de Vitest (unitarios, `src/**/*.test.ts`); excluye `e2e/**` para no chocar con Playwright. |
+| `playwright.config.ts`, `e2e/plataforma.spec.ts` | E2E de API con Playwright (modo `request`, sin navegador — Factu no tiene UI). Levanta `buildServer()` en proceso, `PERSISTENCIA=memoria`. `npm run test:e2e`. Primer uso de Playwright en el ecosistema. |
 
 ## Documentación relacionada
 

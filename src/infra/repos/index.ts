@@ -25,6 +25,9 @@ import {
   PasswordResetRepositoryMemoria,
   TenantRepositoryMemoria,
   UsuarioRepositoryMemoria,
+  SuscripcionRepositoryMemoria,
+  PagoSuscripcionRepositoryMemoria,
+  CredencialPlataformaRepositoryMemoria,
 } from "./memory.js";
 import type {
   ApiKeyRepository,
@@ -48,6 +51,9 @@ import type {
   PasswordResetRepository,
   TenantRepository,
   UsuarioRepository,
+  SuscripcionRepository,
+  PagoSuscripcionRepository,
+  CredencialPlataformaRepository,
 } from "./types.js";
 
 let emisorRepo: EmisorRepository;
@@ -71,6 +77,9 @@ let notificationMessageRepo: NotificationMessageRepository;
 let clienteRepo: ClienteRepository;
 let oauthIdentityRepo: OAuthIdentityRepository;
 let passwordResetRepo: PasswordResetRepository;
+let suscripcionRepo: SuscripcionRepository;
+let pagoSuscripcionRepo: PagoSuscripcionRepository;
+let credencialPlataformaRepo: CredencialPlataformaRepository;
 
 if (env.PERSISTENCIA === "prisma") {
   // Import perezoso para no exigir el cliente de Prisma cuando se usa memoria.
@@ -96,6 +105,9 @@ if (env.PERSISTENCIA === "prisma") {
     PasswordResetRepositoryPrisma,
     TenantRepositoryPrisma,
     UsuarioRepositoryPrisma,
+    SuscripcionRepositoryPrisma,
+    PagoSuscripcionRepositoryPrisma,
+    CredencialPlataformaRepositoryPrisma,
     prisma,
   } = await import("./prisma.js");
   emisorRepo = new EmisorRepositoryPrisma(prisma);
@@ -119,6 +131,9 @@ if (env.PERSISTENCIA === "prisma") {
   clienteRepo = new ClienteRepositoryPrisma(prisma);
   oauthIdentityRepo = new OAuthIdentityRepositoryPrisma(prisma);
   passwordResetRepo = new PasswordResetRepositoryPrisma(prisma);
+  suscripcionRepo = new SuscripcionRepositoryPrisma(prisma);
+  pagoSuscripcionRepo = new PagoSuscripcionRepositoryPrisma(prisma);
+  credencialPlataformaRepo = new CredencialPlataformaRepositoryPrisma(prisma);
 } else {
   emisorRepo = new EmisorRepositoryMemoria();
   comprobanteRepo = new ComprobanteRepositoryMemoria();
@@ -141,6 +156,9 @@ if (env.PERSISTENCIA === "prisma") {
   clienteRepo = new ClienteRepositoryMemoria();
   oauthIdentityRepo = new OAuthIdentityRepositoryMemoria();
   passwordResetRepo = new PasswordResetRepositoryMemoria();
+  suscripcionRepo = new SuscripcionRepositoryMemoria();
+  pagoSuscripcionRepo = new PagoSuscripcionRepositoryMemoria();
+  credencialPlataformaRepo = new CredencialPlataformaRepositoryMemoria();
 }
 
 export const emisorRepository = emisorRepo;
@@ -164,6 +182,9 @@ export const notificationMessageRepository = notificationMessageRepo;
 export const clienteRepository = clienteRepo;
 export const oauthIdentityRepository = oauthIdentityRepo;
 export const passwordResetRepository = passwordResetRepo;
+export const suscripcionRepository = suscripcionRepo;
+export const pagoSuscripcionRepository = pagoSuscripcionRepo;
+export const credencialPlataformaRepository = credencialPlataformaRepo;
 
 /** Llave maestra efectiva (con aviso si no se configuró en desarrollo). */
 export function masterKey(): string {

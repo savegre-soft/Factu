@@ -1058,3 +1058,103 @@ export const notifHistorialSchema = {
     },
   },
 } as const;
+
+// ---- Plataforma: panel interno de Savegre (Savegre Center) ----
+// Requieren una credencial de plataforma (`platform_...`), no un JWT de
+// usuario ni una ApiKey de tenant.
+
+const plataformaBearer = [{ bearerAuth: [] }];
+
+export const plataformaTenantsSchema = {
+  tags: ["Plataforma"],
+  summary: "Lista los tenants (clientes de Factu) con su suscripción — requiere credencial de plataforma",
+  security: plataformaBearer,
+} as const;
+
+export const plataformaTenantDetalleSchema = {
+  tags: ["Plataforma"],
+  summary: "Detalle de un tenant: resumen, suscripción e historial de pagos — requiere credencial de plataforma",
+  security: plataformaBearer,
+  params: {
+    type: "object",
+    properties: { id: { type: "string" } },
+    required: ["id"],
+  },
+} as const;
+
+export const plataformaSuscripcionObtenerSchema = {
+  tags: ["Plataforma"],
+  summary: "Suscripción de un tenant — requiere credencial de plataforma",
+  security: plataformaBearer,
+  params: {
+    type: "object",
+    properties: { id: { type: "string" } },
+    required: ["id"],
+  },
+} as const;
+
+export const plataformaSuscripcionActualizarSchema = {
+  tags: ["Plataforma"],
+  summary: "Actualiza la suscripción de un tenant — requiere credencial de plataforma",
+  security: plataformaBearer,
+  params: {
+    type: "object",
+    properties: { id: { type: "string" } },
+    required: ["id"],
+  },
+  body: {
+    type: "object",
+    properties: {
+      plan: { type: "string" },
+      estado: { type: "string", enum: ["activa", "suspendida", "cancelada"] },
+      moneda: { type: "string", description: 'Ej. "CRC", "USD"' },
+      ciclo: { type: "string", enum: ["mensual", "anual"] },
+      descuentoTipo: { type: "string", enum: ["porcentaje", "monto"], nullable: true },
+      descuentoValor: { type: "number", nullable: true },
+      descuentoRazon: { type: "string", nullable: true },
+      iniciaEn: { type: "string", format: "date-time" },
+      renuevaEn: { type: "string", format: "date-time", nullable: true },
+      notas: { type: "string", nullable: true },
+    },
+    required: ["plan", "estado", "moneda", "ciclo", "iniciaEn"],
+  },
+} as const;
+
+export const plataformaPagosListarSchema = {
+  tags: ["Plataforma"],
+  summary: "Historial de cobros de la suscripción de un tenant — requiere credencial de plataforma",
+  security: plataformaBearer,
+  params: {
+    type: "object",
+    properties: { id: { type: "string" } },
+    required: ["id"],
+  },
+} as const;
+
+export const plataformaPagoCrearSchema = {
+  tags: ["Plataforma"],
+  summary: "Registra un cobro de la suscripción de un tenant — requiere credencial de plataforma",
+  security: plataformaBearer,
+  params: {
+    type: "object",
+    properties: { id: { type: "string" } },
+    required: ["id"],
+  },
+  body: {
+    type: "object",
+    properties: {
+      monto: { type: "number", exclusiveMinimum: 0 },
+      moneda: { type: "string" },
+      metodo: { type: "string", description: 'Ej. "transferencia", "tarjeta"' },
+      referencia: { type: "string", nullable: true },
+      notas: { type: "string", nullable: true },
+    },
+    required: ["monto", "moneda", "metodo"],
+  },
+} as const;
+
+export const plataformaSummarySchema = {
+  tags: ["Plataforma"],
+  summary: "Conteos agregados de todos los tenants — requiere credencial de plataforma",
+  security: plataformaBearer,
+} as const;

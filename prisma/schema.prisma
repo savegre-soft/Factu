@@ -25,6 +25,7 @@ model Tenant {
   buzon     Buzon?
   borradores Borrador[]
   smtp      SmtpSaliente?
+  suscripcion Suscripcion?
 }
 
 /// Configuración de correo SALIENTE (SMTP) de una organización, para entregar los
@@ -420,6 +421,68 @@ model NotificationChannel {
   updatedAt     DateTime @updatedAt
 
   @@index([tenantId])
+}
+
+/// Suscripción de Savegre a un tenant (cobro por usar Factu). RF panel interno
+/// de plataforma (Savegre Center) — mismo espíritu que `Subscription` en
+/// RestauCloud-API, pero sin motor de módulos: Factu es un producto único.
+/// Un tenant sin fila aquí se trata como "activa" (no bloqueado).
+model Suscripcion {
+  id             String    @id
+  tenantId       String    @unique
+  tenant         Tenant    @relation(fields: [tenantId], references: [id])
+  plan           String
+  /// activa | suspendida | cancelada
+  estado         String
+  /// Ej. "CRC", "USD".
+  moneda         String
+  /// mensual | anual
+  ciclo          String
+  /// porcentaje | monto | null (sin descuento)
+  descuentoTipo  String?
+  descuentoValor Float?
+  descuentoRazon String?
+  iniciaEn       DateTime
+  renuevaEn      DateTime?
+  notas          String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  pagos PagoSuscripcion[]
+}
+
+/// Historial de cobros de Savegre a un tenant por su suscripción a Factu.
+model PagoSuscripcion {
+  id            String      @id
+  suscripcionId String
+  suscripcion   Suscripcion @relation(fields: [suscripcionId], references: [id], onDelete: Cascade)
+  monto         Float
+  moneda        String
+  /// Texto libre, ej. "transferencia", "tarjeta".
+  metodo        String
+  referencia    String?
+  notas         String?
+  pagadoEn      DateTime    @default(now())
+  /// Quién lo registró (texto libre: staff de Savegre vía Center, no un Usuario de Factu).
+  registradoPor String?
+
+  @@index([suscripcionId, pagadoEn])
+}
+
+/// Credencial de servicio GLOBAL (sin tenant) para que Savegre Center consuma
+/// las rutas `/plataforma/*`. Deliberadamente separada de `ApiKey` (que está
+/// scoped a un tenant, para integraciones que emiten facturas).
+model CredencialPlataforma {
+  id         String    @id
+  label      String
+  /// Prefijo público e indexado de la credencial (para lookup O(1)).
+  keyId      String    @unique
+  /// Hash scrypt del secreto (nunca el secreto en claro).
+  secretHash String
+  lastUsedAt DateTime?
+  expiresAt  DateTime?
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
 }
 
 /// Una notificación encolada/enviada por un canal (historial + reintentos).

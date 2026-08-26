@@ -110,6 +110,49 @@ Leyenda: ✅ Implementado · 🟡 Parcial · ⬜ Pendiente
 |---|---|---|---|---|
 | K1 | Chat interno | Mensajería 1:1 entre usuarios del mismo tenant, contactos, contador de no leídos. | ✅ Implementado | `src/services/chat/chatService.ts`, `/chat/*`. |
 
+## L. Plataforma / Panel interno de Savegre (Savegre Center)
+
+Superficie cross-tenant, separada por completo del modelo de auth por tenant
+(sección A) — pedido explícito (2026-08-25) para que **Savegre Center**
+(proyecto nuevo, panel interno de Savegre Soft que administra RestroCloud +
+Factu + Wapi desde un solo lugar) pueda ver/gestionar clientes de Factu igual
+que ya lo hace con RestroCloud (`RestauCloud-API` → `/api/platform/*`).
+Decisión de alcance tomada en conversación: paridad completa de ciclo de
+suscripción (no un motor de módulos — Factu es un producto único), y una
+credencial de servicio **global** nueva, deliberadamente separada de `ApiKey`
+(que sigue scoped a un tenant, para integraciones de facturación).
+
+| ID | Requerimiento | Descripción | Estado | Notas |
+|---|---|---|---|---|
+| L1 | Credencial de plataforma | Credencial global (`platform_<keyId>.<secret>`, sin `tenantId`), generada solo por script (`scripts/crear-credencial-plataforma.ts`, no hay endpoint HTTP de creación). | ✅ Implementado | `src/services/plataforma/credencialPlataformaService.ts`. Prefijo elegido (`platform_`) deliberadamente sin solapamiento con `factu_` (prefijo de `ApiKey`) — un primer intento usó `factu_plat_`, que sí solapaba y hacía que `app.authenticate` intentara resolverla como `ApiKey` antes de fallar (rechazo seguro pero por la razón equivocada); corregido antes de verificar en vivo. |
+| L2 | Guarda `requierePlataforma` | Decorator de Fastify completamente separado de `authenticate`/`requierePermiso`; deja el principal en `request.plataforma` (nunca en `request.user`). | ✅ Implementado | `src/plugins/auth.ts`. Verificado en vivo (servidor real, Postgres real, ver abajo) y ahora también con una suite E2E automatizada (`e2e/plataforma.spec.ts`, Playwright): una credencial de plataforma contra `GET /auditoria` (ruta de tenant) → 401; `GET /plataforma/tenants` sin token, o con un Bearer con prefijo `factu_` → 401. |
+| L3 | Listado y detalle de tenants | `GET /plataforma/tenants` (id, nombre, conteo de usuarios/emisores, plan+estado de suscripción) y `GET /plataforma/tenants/:id` (+ `estadisticasService.resumen` + historial de pagos). | ✅ Implementado | `src/routes/plataforma.ts`. Requirió agregar `TenantRepository.listarTodos()` (no existía — solo `crear`/`buscar`), implementado en `memory.ts` y `prisma.ts`. |
+| L4 | Suscripción por tenant | Plan, estado (`activa`/`suspendida`/`cancelada`), moneda, ciclo, descuento, fechas, notas — 1:1 con `Tenant`. Un tenant sin fila se trata como `activa` (mismo criterio que ya usa el panel equivalente de RestroCloud). | ✅ Implementado | Modelo `Suscripcion` (`prisma/schema.prisma`), `SuscripcionService.obtener/actualizar` (`src/services/plataforma/suscripcionService.ts`). `GET/PUT /plataforma/tenants/:id/suscripcion`. |
+| L5 | Historial de cobros | Registrar y listar pagos de la suscripción de un tenant (monto, moneda, método, referencia, notas, quién lo registró). | ✅ Implementado | Modelo `PagoSuscripcion`. `registrarPago` materializa una suscripción por defecto si el tenant no tenía fila propia (para poder asociarle el pago). `GET/POST /plataforma/tenants/:id/suscripcion/pagos`. |
+| L6 | Resumen agregado | Conteos cross-tenant (tenants por estado, total usuarios/emisores) para el futuro dashboard de Center. | ✅ Implementado | `GET /plataforma/summary`. |
+| L7 | Auditoría de cambios de plataforma | Cada actualización de suscripción/pago queda en `RegistroAuditoria` con `actorTipo: "plataforma"` y el label de la credencial como nombre del actor. | ✅ Implementado | `ActorTipo` extendido (`"usuario" \| "apikey" \| "sistema" \| "plataforma"`), `actorDesde()` en `src/services/auditoria/index.ts` con rama nueva para `kind: "plataforma"`. |
+| L8 | Suite E2E de `/plataforma/*` | Pedido explícito del usuario (2026-08-26) antes de commitear: automatizar lo verificado a mano con curl, con pruebas reales de extremo a extremo (no mocks). | ✅ Implementado | `e2e/plataforma.spec.ts` + `playwright.config.ts` — **primer uso de Playwright en Factu y en todo el ecosistema Savegre**. Corre en modo `request` (sin navegador, Factu no tiene UI): levanta `buildServer()` EN PROCESO con `PERSISTENCIA=memoria` (hermético, sin depender de Postgres), crea un tenant y una credencial de plataforma directamente vía los servicios, y llama la API real por HTTP. 7/7 tests verdes: listado/detalle de tenant, actualizar suscripción, registrar y listar pagos, 404 de tenant inexistente, y las 3 guardas cruzadas (L2). Encontró y corrigió un bug real del propio test (fecha `"2026-01-01"` sin hora violaba el `format: date-time` del schema — el 400 de validación de Fastify corre antes que el handler, así que llegaba antes que el 404 esperado; no es un bug de la ruta). Requirió agregar `vitest.config.ts` (no existía) para excluir `e2e/**` de Vitest — sin eso, Vitest intentaba correr el spec de Playwright directamente y fallaba en la recolección (`test.beforeAll() did not expect...`). `npm run test:e2e` en `package.json`. |
+
+**Verificado en vivo (2026-08-26)**: levantado el servidor real (`PERSISTENCIA=prisma`,
+puerto 3099) contra el Postgres real del `docker-compose` de este repo (contenedor
+`factu-db-1`, que ya tenía datos reales de trabajo previo — 1 tenant, 1 usuario, 1
+comprobante; se usó `prisma db push`, no `migrate dev`, para no arriesgar esos datos
+al no existir carpeta `prisma/migrations` local). Con una credencial creada por el
+script: `GET /plataforma/tenants` y `/summary` devolvieron el tenant real
+("RestroCloud Demo Persistente"); `PUT .../suscripcion` cambió su plan a "pro";
+`POST .../pagos` registró un cobro real (`SINPE-123`, ₡50000) que apareció en el
+`GET` subsiguiente; las 3 guardas cruzadas (credencial de plataforma contra
+`/auditoria`, sin token, y un Bearer con prefijo `factu_` contra `/plataforma/tenants`)
+devolvieron 401 como se esperaba. Swagger (`/swagger/json`) expone las 5 rutas bajo
+el tag "Plataforma". **Nota**: la credencial usada para verificar (id
+`9b77ceab-384f-4504-b81c-5fe7f4856f36`) y el pago de prueba (`SINPE-123`) quedaron
+en la base — el pago es sobre el tenant demo ya existente (no un cliente real), pero
+conviene revocar esa credencial de verificación antes de usar esta base para nada
+más serio, y generar una nueva para el uso real de Savegre Center.
+
+**Pendiente para Savegre Center** (fuera del alcance de este trabajo en Factu):
+construir el adaptador que consuma estos endpoints desde el backend de Center.
+
 ---
 
 ## Orden de trabajo sugerido
