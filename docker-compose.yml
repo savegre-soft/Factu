@@ -28,6 +28,10 @@ services:
     environment:
       PORT: 3000
       NODE_ENV: production
+      # clave.ts genera la fecha de la clave con hora LOCAL del proceso; sin TZ
+      # el contenedor corre en UTC y adelanta esa fecha un día después de las
+      # 18:00 CR -> Hacienda -405/-16. NO quitar.
+      TZ: America/Costa_Rica
       # Este stack corre con NODE_ENV=production pero es el entorno local, así
       # que la documentación interactiva se deja encendida a propósito. En un
       # servidor real, quitar esta línea la apaga.
@@ -51,8 +55,8 @@ services:
       # Política de firma XAdES-EPES. Sin esto la firma sale XAdES-BES y Hacienda
       # la rechaza: "La firma del documento no tiene el Policy Id". La URL apunta a
       # la resolución DGT-R-48-2016 y el HASH es su digest SHA-256 en base64.
-      HACIENDA_POLICY_URL: https://www.hacienda.go.cr/docs/Resolucion_Comprobantes_Electronicos_DGT-R-48-2016_v4.1.pdf
-      HACIENDA_POLICY_HASH: vPjYEG5pdxOi+6DB29+KqF3I4VOcMEaixzE3d2iUiJk=
+      HACIENDA_POLICY_URL: "https://cdn.comprobanteselectronicos.go.cr/xmlschemas/Resoluci%C3%B3n_General_sobre_disposiciones_t%C3%A9cnicas_comprobantes_electr%C3%B3nicos_para_efectos_tributarios.pdf"
+      HACIENDA_POLICY_HASH: "DWxin1xWOeI8OuWQXazh4VjLWAaCLAA954em7DMh0h8="
       # Cédula del proveedor del sistema de facturación (nodo ProveedorSistemas,
       # obligatorio en v4.4). Vacío = se usa la cédula del propio emisor.
       PROVEEDOR_SISTEMAS: ""
