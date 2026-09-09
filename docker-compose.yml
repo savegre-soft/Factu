@@ -38,11 +38,21 @@ services:
       # ⚠️ Cambia estas llaves en un entorno real
       FACTU_MASTER_KEY: cambia-esta-llave-maestra
       JWT_SECRET: cambia-este-secreto-jwt
+      # Zona horaria del proceso: `clave.ts` genera la fecha de la clave con
+      # métodos de hora LOCAL — sin esto el contenedor corre en UTC y, después
+      # de las 18:00 CR, la fecha de la clave queda un día adelantada respecto
+      # al FechaEmision del XML (Hacienda -405 / -16). NO quitar.
+      TZ: America/Costa_Rica
       # Ambiente de pruebas de Hacienda (ajusta las URLs a las oficiales del sandbox)
       HACIENDA_ENV: stag
       HACIENDA_IDP_URL: https://idp.comprobanteselectronicos.go.cr/auth/realms/rut-stag/protocol/openid-connect/token
       HACIENDA_API_URL: https://api-sandbox.comprobanteselectronicos.go.cr/recepcion/v1
       HACIENDA_CLIENT_ID: api-stag
+      # Política de firma XAdES-EPES — valores oficiales de Hacienda v4.4.
+      # Sin ambos, la firma sale como BES y Hacienda la rechaza
+      # ("La firma del comprobante no tiene el Policy Id").
+      HACIENDA_POLICY_URL: "https://cdn.comprobanteselectronicos.go.cr/xmlschemas/Resoluci%C3%B3n_General_sobre_disposiciones_t%C3%A9cnicas_comprobantes_electr%C3%B3nicos_para_efectos_tributarios.pdf"
+      HACIENDA_POLICY_HASH: "DWxin1xWOeI8OuWQXazh4VjLWAaCLAA954em7DMh0h8="
       # Entrega del comprobante al cliente por correo (rellena el SMTP para activarla).
       ENTREGA_ENABLED: "true"
       SMTP_HOST: ""

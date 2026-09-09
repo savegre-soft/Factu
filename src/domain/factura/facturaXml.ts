@@ -233,9 +233,13 @@ function addResumen(
 function addInformacionReferencia(root: XmlNode, refs: InformacionReferencia[]): void {
   for (const ref of refs) {
     const node = root.ele("InformacionReferencia");
-    node.ele("TipoDoc").txt(ref.tipoDoc);
+    // v4.4 (notaCreditoElectronica.xsd): el orden/nombres reales son
+    // TipoDocIR, (TipoDocRefOTRO opcional), Numero, FechaEmisionIR, Codigo,
+    // Razon — antes se emitía TipoDoc/FechaEmision (v4.3), rechazado por
+    // Hacienda ("One of 'TipoDocIR' is expected" / "'FechaEmisionIR'").
+    node.ele("TipoDocIR").txt(ref.tipoDoc);
     node.ele("Numero").txt(ref.numero);
-    node.ele("FechaEmision").txt(fechaEmisionISO(ref.fechaEmision));
+    node.ele("FechaEmisionIR").txt(fechaEmisionISO(ref.fechaEmision));
     node.ele("Codigo").txt(ref.codigo);
     node.ele("Razon").txt(ref.razon);
   }
