@@ -1,13 +1,14 @@
 # Configuración
 
 Todas las variables de entorno (validadas con zod en [`src/config/env.ts`](../src/config/env.ts)).
-Copia `.env.example` a `.env` y complétalas.
+Copia `.env.example` a `.env` y complétalas — `npm run dev` (`tsx watch --env-file-if-exists=.env`)
+lo carga automáticamente si existe; no falla si no existe.
 
 ## Servidor
 
-| Variable | Requerida | Por defecto | Descripción |
+| Variable | Requerida | Por defecto (código) | Descripción |
 |---|---|---|---|
-| `PORT` | no | `3000` | Puerto HTTP. |
+| `PORT` | no | `3000` | Puerto HTTP. **El `.env.example` de este repo lo fija en `3001`** (no `3000`) — deliberadamente distinto del puerto por defecto de RestauCloud-API, un proyecto separado que suele correr en la misma máquina de desarrollo. |
 | `NODE_ENV` | no | `development` | `development` \| `test` \| `production`. |
 | `DOCS_PUBLICAS` | no | — | `true`/`false`. Publica `/docs` y `/swagger`. Por defecto: encendidas en desarrollo, **apagadas en producción** (exponen el mapa completo de la API sin autenticación). |
 
@@ -106,7 +107,7 @@ usuarios (código de recuperación de contraseña).
 ## Ejemplo mínimo (memoria, sin DB)
 
 ```bash
-PORT=3000
+PORT=3001
 FACTU_MASTER_KEY=una-llave-larga-y-aleatoria
 JWT_SECRET=un-secreto-largo-y-aleatorio
 HACIENDA_ENV=stag

@@ -5,7 +5,12 @@ import { receptionClient, emitirComprobante } from "../services/hacienda/index.j
 import { firmar } from "../services/firma/index.js";
 import { generarP12Autofirmado, type Certificado } from "../services/firma/certificado.js";
 import { certStore } from "../services/emisor/index.js";
-import { comprobanteRepository, emisorRepository, clienteRepository } from "../infra/repos/index.js";
+import {
+  comprobanteRepository,
+  emisorRepository,
+  clienteRepository,
+  consecutivoRepository,
+} from "../infra/repos/index.js";
 import { randomUUID } from "node:crypto";
 import { documentosRecibidosService } from "../services/documentosRecibidos/index.js";
 import { entregaService } from "../services/entrega/index.js";
@@ -18,14 +23,16 @@ import { env } from "../config/env.js";
 import {
   comprobanteEnviarSchema,
   comprobanteGetSchema,
+  comprobantePdfSchema,
   comprobantesListarSchema,
   comprobanteReenviarSchema,
   comprobanteEnviosSchema,
 } from "../plugins/schemas.js";
+import { parsearParaPdf, generarFacturaPdf } from "../services/entrega/comprobantePdf.js";
 import { z } from "zod";
 import { Permiso } from "../domain/auth/roles.js";
 import { emisorDelTenant } from "./_guards.js";
-import type { DatosFactura } from "../services/hacienda/emision.js";
+import { TIPO_CONSECUTIVO, type DatosFactura } from "../services/hacienda/emision.js";
 
 /** Mapea el segmento de la ruta al tipo de documento. */
 const RUTA_A_TIPO: Record<string, TipoDocumento> = {
@@ -66,31 +73,68 @@ export async function comprobanteRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(400).send({ error: "Entrada inválida", detalles: parsed.error.issues });
     }
     // El consecutivo es opcional en la entrada: lo resuelve la API más abajo.
-    const datos = parsed.data as Omit<DatosFactura, "consecutivo"> & { consecutivo?: number };
+    const { referenciaExterna, ...body } = parsed.data as Omit<DatosFactura, "consecutivo"> & {
+      consecutivo?: number;
+      referenciaExterna?: string;
+    };
     // ProveedorSistemas (v4.4): usa el configurado en la plataforma; si no hay,
     // el generador cae en la cédula del propio emisor.
-    if (!datos.proveedorSistemas) datos.proveedorSistemas = env.PROVEEDOR_SISTEMAS;
+    if (!body.proveedorSistemas) body.proveedorSistemas = env.PROVEEDOR_SISTEMAS;
 
     // El emisor debe estar registrado y pertenecer al tenant del usuario.
-    if (!(await emisorDelTenant(request, reply, datos.cedulaEmisor))) return;
+    if (!(await emisorDelTenant(request, reply, body.cedulaEmisor))) return;
+
+    // Idempotencia (reconciliación de RestroCloud): si ya existe un
+    // comprobante emitido con esta misma (cedulaEmisor, referenciaExterna),
+    // devolverlo tal cual — nunca consumir un consecutivo nuevo ni volver a
+    // llamar a Hacienda/reenviar por correo, eso ya ocurrió la primera vez.
+    if (referenciaExterna) {
+      const existente = await comprobanteRepository.buscarPorReferencia(body.cedulaEmisor, referenciaExterna);
+      if (existente) {
+        return {
+          tipo: tipoParam,
+          clave: existente.clave,
+          consecutivo: Number(existente.consecutivo),
+          estado: existente.estado,
+          respuestaXml: existente.respuestaXml,
+          certificadoDemo: false,
+          idempotente: true,
+        };
+      }
+    }
+
+    // D9: consecutivo atómico server-side. Si el cliente lo omite (el camino
+    // recomendado), se asigna aquí; si lo manda explícito (compatibilidad
+    // hacia atrás), se respeta y solo se avanza el contador interno para que
+    // nunca vuelva a asignar un valor ≤ ese — best-effort, nunca bloquea la
+    // emisión si falla.
+    let consecutivoResuelto: number;
+    if (body.consecutivo !== undefined) {
+      consecutivoResuelto = body.consecutivo;
+      void consecutivoRepository
+        .registrarSiUsado(
+          body.cedulaEmisor,
+          body.sucursal ?? 1,
+          body.terminal ?? 1,
+          TIPO_CONSECUTIVO[tipo],
+          body.consecutivo,
+        )
+        .catch((err) => request.log.warn({ err }, "No se pudo registrar el consecutivo explícito"));
+    } else {
+      consecutivoResuelto = await consecutivoRepository.siguiente(
+        body.cedulaEmisor,
+        body.sucursal ?? 1,
+        body.terminal ?? 1,
+        TIPO_CONSECUTIVO[tipo],
+      );
+    }
+    const datos: DatosFactura = { ...body, consecutivo: consecutivoResuelto };
 
     // Validación de reglas de negocio antes de firmar/enviar (falla temprano).
     const errores = validarComprobante(tipo, datos);
     if (errores.length > 0) {
       return reply.status(400).send({ error: "Comprobante inválido", errores });
     }
-
-    // El consecutivo lo lleva la API, no el cliente: si el navegador lo
-    // manejara, una recarga o una segunda pestaña repetirían el número y
-    // Hacienda rechazaría el comprobante. Se acepta uno explícito como override.
-    const serie = {
-      cedulaEmisor: datos.cedulaEmisor,
-      sucursal: datos.sucursal ?? 1,
-      terminal: datos.terminal ?? 1,
-      tipo,
-    };
-    const consecutivoAsignado =
-      datos.consecutivo ?? (await comprobanteRepository.reservarConsecutivo(serie));
 
     // Usa el certificado real del emisor si está cargado; si no, cae a uno
     // autofirmado de PRUEBA (marcado en la respuesta).
@@ -110,28 +154,20 @@ export async function comprobanteRoutes(app: FastifyInstance): Promise<void> {
     // Emisión ante Hacienda. Todo lo que va DESPUÉS de este bloque ocurre con el
     // comprobante ya emitido: ningún fallo posterior puede reportarse como
     // "fallo al emitir", o el usuario reintentaría y duplicaría el documento.
+    // Nota: el consecutivo asignado por `consecutivoRepository` (D9) nunca se
+    // "libera" si esta emisión falla antes de llegar a Hacienda — el contador
+    // atómico no soporta devolver un número, así que un fallo puede dejar un
+    // hueco en la serie; es aceptable (Hacienda no exige consecutivos sin
+    // huecos, solo únicos y monótonos), a cambio de la atomicidad real de D9.
     let result;
-    // Mientras esto sea false, Hacienda no ha visto nada y el consecutivo que
-    // se reservó se puede devolver a la serie.
-    let entregado = false;
     try {
-      result = await emitirComprobante(tipo, { ...datos, consecutivo: consecutivoAsignado }, {
+      result = await emitirComprobante(tipo, datos, {
         obtenerToken: () => tokenStore.getAccessToken(datos.cedulaEmisor),
         firmar,
         cliente: receptionClient,
         certificado,
-        alEntregarAHacienda: () => {
-          entregado = true;
-        },
       });
     } catch (err) {
-      // Falló antes de entregarlo: se devuelve el número para no dejar un hueco
-      // en la serie. Si ya se entregó, el número está consumido y no se toca.
-      if (!entregado && datos.consecutivo === undefined) {
-        await comprobanteRepository
-          .liberarConsecutivo(serie, consecutivoAsignado)
-          .catch((e) => request.log.warn({ err: e }, "No se pudo liberar el consecutivo"));
-      }
       // Sin sesión con el IDP no es un fallo de la integración: es que hay que
       // autenticar al emisor. Con 401 el cliente sabe que debe pedir credenciales.
       if (err instanceof SinSesionHaciendaError) {
@@ -163,6 +199,7 @@ export async function comprobanteRoutes(app: FastifyInstance): Promise<void> {
           moneda: result.moneda,
           xmlFirmado: result.xmlFirmado,
           respuestaXml: result.estado.respuestaXml,
+          referenciaExterna,
         });
       } catch (err) {
         persistido = false;
@@ -359,6 +396,33 @@ export async function comprobanteRoutes(app: FastifyInstance): Promise<void> {
       updatedAt: record.updatedAt,
     };
   });
+
+  /**
+   * Genera el PDF del comprobante a partir de su XML firmado, en base64
+   * (mismo camino que usa el envío por correo, `entregaService` — cero
+   * lógica de PDF duplicada). No hay otra forma de *devolver* el PDF hoy,
+   * solo de enviarlo por correo vía `/reenviar`.
+   */
+  app.get(
+    "/comprobante/:clave/pdf",
+    { schema: comprobantePdfSchema, preHandler: app.requierePermiso(Permiso.Leer) },
+    async (request, reply) => {
+      const clave = (request.params as { clave: string }).clave;
+      const record = await comprobanteRepository.buscar(clave);
+      if (!record) return reply.status(404).send({ error: "Comprobante no encontrado" });
+      if (!(await emisorDelTenant(request, reply, record.cedulaEmisor))) return;
+      if (!record.xmlFirmado) {
+        return reply.status(400).send({ error: "El comprobante no tiene un XML firmado todavía" });
+      }
+      const datos = parsearParaPdf(record.xmlFirmado);
+      const pdf = await generarFacturaPdf(datos, record.estado);
+      return {
+        clave: record.clave,
+        filename: `${record.clave}.pdf`,
+        pdfBase64: pdf.toString("base64"),
+      };
+    },
+  );
 
   /** Reenvía el comprobante al cliente por correo (PDF + XML). */
   app.post(

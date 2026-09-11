@@ -95,7 +95,7 @@ Inicializa la base y arranca todo.
 </tr>
 </table>
 
-> 🏠 **Inicio:** http://localhost:3000 &nbsp;·&nbsp; 📖 **Docs (Scalar):** http://localhost:3000/docs &nbsp;·&nbsp; 🧪 **Swagger:** http://localhost:3000/swagger
+> 🏠 **Inicio:** http://localhost:3001 &nbsp;·&nbsp; 📖 **Docs (Scalar):** http://localhost:3001/docs &nbsp;·&nbsp; 🧪 **Swagger:** http://localhost:3001/swagger
 
 ---
 
@@ -103,28 +103,28 @@ Inicializa la base y arranca todo.
 
 ```bash
 # 0️⃣  Crear organización + usuario admin  →  devuelve un JWT
-TOKEN=$(curl -s -X POST http://localhost:3000/auth/registro \
+TOKEN=$(curl -s -X POST http://localhost:3001/auth/registro \
   -H "Content-Type: application/json" \
   -d '{ "tenantNombre": "Mi Empresa", "email": "admin@miempresa.cr", "nombre": "Admin", "password": "unaClaveSegura" }' \
   | node -e "process.stdin.on('data',d=>console.log(JSON.parse(d).token))")
 
 # 1️⃣  Registrar emisor + subir su certificado  (Authorization: Bearer $TOKEN)
-curl -X POST http://localhost:3000/emisor \
+curl -X POST http://localhost:3001/emisor \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{ "cedula": "3101123456", "nombre": "Empresa X S.A." }'
 
-curl -X POST http://localhost:3000/emisor/3101123456/certificado \
+curl -X POST http://localhost:3001/emisor/3101123456/certificado \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{ "p12Base64": "<.p12 en base64>", "password": "<PIN>" }'
 
 # 2️⃣  Autenticar el emisor contra el IDP de Hacienda
-curl -X POST http://localhost:3000/hacienda/login \
+curl -X POST http://localhost:3001/hacienda/login \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{ "emisor": "3101123456", "username": "<usuario>", "password": "<clave>" }'
 
 # 3️⃣  Emitir  (factura | tiquete | nota-credito | nota-debito | compra | exportacion)
 #     El consecutivo es OPCIONAL: si se omite, lo reserva la API.
-curl -X POST http://localhost:3000/comprobante/factura/enviar \
+curl -X POST http://localhost:3001/comprobante/factura/enviar \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{ "cedulaEmisor": "3101123456", "codigoActividadEmisor": "8549.0",
         "emisor": { "nombre": "Empresa X S.A.", "identificacion": { "tipo": "02", "numero": "3101123456" },
@@ -171,7 +171,7 @@ curl -X POST http://localhost:3000/comprobante/factura/enviar \
 > `Authorization: Bearer <JWT>`, una API key (`Bearer factu_…`) o la cookie de sesión.
 > Roles: **admin** · **facturador** · **lector**.
 
-<div align="right"><sub>Referencia completa e interactiva en <a href="http://localhost:3000/docs"><code>/docs</code></a> (Scalar / Swagger)</sub></div>
+<div align="right"><sub>Referencia completa e interactiva en <a href="http://localhost:3001/docs"><code>/docs</code></a> (Scalar / Swagger)</sub></div>
 
 ---
 
@@ -276,7 +276,8 @@ Documentación viva del repositorio: [PROJECT_MAP.md](./PROJECT_MAP.md) ·
 
 ```bash
 npm run dev          # 🔥 desarrollo con recarga
-npm test             # ✅ suite de tests
+npm test             # ✅ suite de tests (Vitest, unitarios)
+npm run test:e2e     # 🎭 E2E de API con Playwright (sin navegador — ver e2e/)
 npm run typecheck    # 🔎 chequeo de tipos
 npm run build        # 📦 compila a dist/
 npm start            # ▶️  ejecuta la versión compilada

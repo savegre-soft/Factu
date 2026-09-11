@@ -65,6 +65,13 @@ sola plataforma.
   después.
 - **Chat interno**: los usuarios de una misma organización se pueden escribir
   entre sí dentro del sistema.
+- **Panel interno de Savegre** (2026-08-25/26): además de la app de
+  facturación, Factu expone un canal de solo-servicio (`/plataforma/*`,
+  credencial propia, separada de las cuentas de las organizaciones) para que
+  **Savegre Center** — el panel interno donde Savegre Soft administra todos
+  sus productos (RestroCloud, Factu, Wapi) desde un solo lugar — pueda ver
+  los tenants de Factu y gestionar su suscripción/cobro, igual que ya hace
+  con RestroCloud.
 
 ### Cómo cuida tus datos
 
@@ -124,7 +131,7 @@ Ver el detalle fila por fila en [REQUIREMENTS.md](./REQUIREMENTS.md).
 # Local, sin base de datos (persistencia en memoria)
 npm install
 cp .env.example .env
-npm run dev                 # http://localhost:3000 · docs en /docs
+npm run dev                 # http://localhost:3001 · docs en /docs
 
 # Con Docker (API + PostgreSQL)
 docker compose up --build

@@ -4,6 +4,7 @@ import { TipoDocumento } from "../factura/facturaXml.js";
 import {
   CodigoImpuesto,
   CondicionVenta,
+  TipoExoneracion,
   TipoIdentificacion,
 } from "../factura/types.js";
 
@@ -120,6 +121,76 @@ describe("validarComprobante — líneas", () => {
     const d = valido();
     d.lineas = [];
     expect(campos(validarComprobante(TipoDocumento.FacturaElectronica, d))).toContain("lineas");
+  });
+});
+
+describe("validarComprobante — exoneración por línea", () => {
+  it("rechaza una exoneración incompleta (sin documento, institución ni fecha, tarifa fuera de rango)", () => {
+    const d = valido();
+    d.lineas[0]!.impuestos = [
+      {
+        codigo: CodigoImpuesto.IVA,
+        codigoTarifa: "08",
+        tarifa: 13,
+        exoneracion: {
+          tipoDocumento: TipoExoneracion.ComprasAutorizadasDGT,
+          numeroDocumento: "",
+          nombreInstitucion: "",
+          fechaEmision: undefined as unknown as Date,
+          tarifaExonerada: 0,
+        },
+      },
+    ];
+    const errs = validarComprobante(TipoDocumento.FacturaElectronica, d);
+    expect(campos(errs)).toEqual(
+      expect.arrayContaining([
+        "lineas[0].impuestos[0].exoneracion.numeroDocumento",
+        "lineas[0].impuestos[0].exoneracion.nombreInstitucion",
+        "lineas[0].impuestos[0].exoneracion.fechaEmision",
+        "lineas[0].impuestos[0].exoneracion.tarifaExonerada",
+      ]),
+    );
+  });
+
+  it("rechaza una tarifa exonerada fuera de rango (más de 100%)", () => {
+    const d = valido();
+    d.lineas[0]!.precioUnitario = 1000; // IVA bruto = 130
+    d.lineas[0]!.impuestos = [
+      {
+        codigo: CodigoImpuesto.IVA,
+        codigoTarifa: "08",
+        tarifa: 13,
+        exoneracion: {
+          tipoDocumento: TipoExoneracion.ComprasAutorizadasDGT,
+          numeroDocumento: "DGT-1",
+          nombreInstitucion: "01",
+          fechaEmision: new Date("2026-01-01"),
+          tarifaExonerada: 150,
+        },
+      },
+    ];
+    const errs = validarComprobante(TipoDocumento.FacturaElectronica, d);
+    expect(campos(errs)).toContain("lineas[0].impuestos[0].exoneracion.tarifaExonerada");
+  });
+
+  it("acepta una exoneración completa y consistente", () => {
+    const d = valido();
+    d.lineas[0]!.precioUnitario = 1000;
+    d.lineas[0]!.impuestos = [
+      {
+        codigo: CodigoImpuesto.IVA,
+        codigoTarifa: "08",
+        tarifa: 13,
+        exoneracion: {
+          tipoDocumento: TipoExoneracion.ComprasAutorizadasDGT,
+          numeroDocumento: "DGT-1",
+          nombreInstitucion: "01",
+          fechaEmision: new Date("2026-01-01"),
+          tarifaExonerada: 100,
+        },
+      },
+    ];
+    expect(validarComprobante(TipoDocumento.FacturaElectronica, d)).toEqual([]);
   });
 });
 

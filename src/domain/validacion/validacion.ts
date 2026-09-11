@@ -124,6 +124,24 @@ function validarLinea(errores: ErrorValidacion[], linea: LineaDetalle, i: number
     if (!imp.codigoTarifa?.trim()) {
       errores.push({ campo: `${p}.impuestos[${j}].codigoTarifa`, mensaje: "Obligatorio" });
     }
+    if (imp.exoneracion) {
+      const ep = `${p}.impuestos[${j}].exoneracion`;
+      const ex = imp.exoneracion;
+      if (!ex.numeroDocumento?.trim()) {
+        errores.push({ campo: `${ep}.numeroDocumento`, mensaje: "Obligatorio" });
+      }
+      if (!ex.nombreInstitucion?.trim()) {
+        errores.push({ campo: `${ep}.nombreInstitucion`, mensaje: "Obligatorio" });
+      }
+      if (!ex.fechaEmision) {
+        errores.push({ campo: `${ep}.fechaEmision`, mensaje: "Obligatorio" });
+      }
+      // El monto exonerado lo calcula `totales.ts` a partir de este porcentaje
+      // (nunca puede superar el impuesto: 100% exonera el impuesto entero).
+      if (!(ex.tarifaExonerada > 0 && ex.tarifaExonerada <= 100)) {
+        errores.push({ campo: `${ep}.tarifaExonerada`, mensaje: "Debe estar entre 1 y 100" });
+      }
+    }
   }
 }
 

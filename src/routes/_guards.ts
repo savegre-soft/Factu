@@ -7,30 +7,6 @@ import type { EmisorRecord } from "../infra/repos/types.js";
 import { Permiso, rolTienePermiso } from "../domain/auth/roles.js";
 
 /**
- * Autoriza GESTIONAR (registrar/actualizar, subir el certificado de) un emisor
- * específico: un humano con el permiso `GestionarEmisores` (rol admin), o una
- * API key de servicio ya scoped explícitamente a esa cédula (o sin lista de
- * `emisores` = sin restricción).
- *
- * Antes esto era admin-only sin excepción — una API key de servicio nunca puede
- * tener `rol: admin` por diseño, así que ninguna integración externa (ERP,
- * RestroCloud) podía registrar su propio emisor ni subir su certificado, aunque
- * el admin que creó la key ya la hubiera scoped a esa cédula. Esta guarda NO
- * amplía lo que una API key puede hacer más allá de los emisores que su creador
- * ya le autorizó: sigue sin poder gestionar usuarios, otras integraciones, ni
- * emisores fuera de su whitelist, y una key `lector` (solo `Permiso.Leer`,
- * sin `Emitir`) tampoco pasa.
- */
-export function puedeGestionarEmisor(request: FastifyRequest, cedula: string): boolean {
-  if (request.user.kind !== "service") {
-    return rolTienePermiso(request.user.rol, Permiso.GestionarEmisores);
-  }
-  if (!rolTienePermiso(request.user.rol, Permiso.Emitir)) return false;
-  const permitidos = request.user.emisores;
-  return !permitidos || permitidos.length === 0 || permitidos.includes(cedula);
-}
-
-/**
  * Devuelve el emisor si existe y pertenece al tenant del usuario autenticado.
  * En caso contrario responde (404 o 403) y devuelve `null`.
  */
@@ -55,4 +31,32 @@ export async function emisorDelTenant(
     return null;
   }
   return emisor;
+}
+
+/**
+ * Autoriza GESTIONAR (registrar/actualizar, subir certificado de) un emisor
+ * específico: un humano con el permiso `GestionarEmisores` (rol admin), o una
+ * API key de servicio ya scoped explícitamente a esa cédula (o sin lista de
+ * `emisores` = sin restricción) desde que un admin humano la creó.
+ *
+ * Antes de este cambio, `GestionarEmisores` era admin-only sin excepción —
+ * una API key nunca puede tener `rol: admin` por diseño (`apiKeyService`: "Una
+ * API key nunca es admin: solo emite o lee"), así que ninguna integración
+ * externa podía registrar su propio emisor ni subir su certificado, aunque el
+ * admin que creó esa key ya la hubiera scoped explícitamente a esa cédula.
+ * Esta guarda NO amplía lo que una API key puede hacer más allá de los
+ * emisores que su propio creador ya le autorizó — sigue sin poder gestionar
+ * usuarios, otras integraciones, ni emisores fuera de su whitelist.
+ */
+export function puedeGestionarEmisor(request: FastifyRequest, cedula: string): boolean {
+  if (request.user.kind !== "service") {
+    return rolTienePermiso(request.user.rol, Permiso.GestionarEmisores);
+  }
+  // Una API key `lector` (solo lectura) nunca debe poder subir un certificado
+  // ni registrar un emisor, aunque esté scoped a esa cédula — el scope por sí
+  // solo no basta, la key también necesita ser operativa (`facturador`, el
+  // único rol de servicio con `Permiso.Emitir` además de `Leer`).
+  if (!rolTienePermiso(request.user.rol, Permiso.Emitir)) return false;
+  const permitidos = request.user.emisores;
+  return !permitidos || permitidos.length === 0 || permitidos.includes(cedula);
 }

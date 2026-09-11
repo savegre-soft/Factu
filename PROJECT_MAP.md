@@ -57,21 +57,24 @@ ruta.
 | `webhooks.ts` | `/webhooks/*` | `services/webhooks` (`webhookService`, `emitirEvento`, `poller.ts`) | modelos `Webhook`, `WebhookEntrega` |
 | `auditoria.ts` | `/auditoria`, `/logs` | `services/auditoria`, `services/logs` | modelos `RegistroAuditoria`, `RegistroLog` |
 | `notificaciones.ts` | `/notification-*`, `/notifications` | `services/notificaciones` (`notificacionesService`, `notificarEvento`, `poller.ts`) | modelos `NotificationChannel`, `NotificationMessage` |
-| `_guards.ts` | — | Guards de rol/permiso reutilizados por las rutas (`soloAdmin`, `soloLectura`, `emisorDelTenant`) | `domain/auth/roles.ts` |
+| `_guards.ts` | — | Guards de tenant/permiso reutilizados por las rutas: `emisorDelTenant()` (existe + pertenece al tenant + dentro del scope de emisores de una API key), `puedeGestionarEmisor()` (B7, 2026-07-30 — humano admin, o API key `facturador` scoped a esa cédula) | `domain/auth/roles.ts` |
 | `_pagina.ts` | — | Ventana de paginación común a los listados (`paginaSchema`, `paginaQuerystring`; 50 por defecto, 200 máximo) | — |
+| `plataforma.ts` | `/plataforma/*` | `services/plataforma` (`credencialPlataformaService`, `suscripcionService`) | `domain`: n/a (sin dominio propio); modelos `Suscripcion`, `PagoSuscripcion`, `CredencialPlataforma` (L1-L7, 2026-08-25/26) |
 
 La entrega al cliente (`services/entrega/*`: `entregaService`, `comprobantePdf.ts`,
 `emailSender.ts`, `plantillaCorreo.ts`, `poller.ts`) se dispara desde `comprobante.ts`
 al emitir, y se expone en `/comprobante/:clave/reenviar` y `/comprobante/:clave/envios`.
-Usa el modelo `EnvioComprobante`.
+Usa el modelo `EnvioComprobante`. `GET /comprobante/:clave/pdf` (2026-07-31, fila F2)
+devuelve el PDF real en `pdfBase64` para descarga directa, sin pasar por correo —
+reusa `parsearParaPdf`/`generarFacturaPdf` de `comprobantePdf.ts` sin duplicar lógica.
 
 ## Dominio (`src/domain/`) — lógica pura, sin infraestructura
 
 | Módulo | Contenido |
 |---|---|
 | `clave/clave.ts` | Clave numérica (50 díg.) y consecutivo (20 díg.). `TipoComprobante` incluye FEC (08), FEE (09) y REP (10). |
-| `factura/types.ts` | Tipos de negocio: `Emisor`, `Receptor`, `LineaDetalle`, `Moneda`, `InformacionReferencia`, `Exoneracion`, y los catálogos completos del XSD v4.4: `TipoIdentificacion`, `CondicionVenta`, `TipoMedioPago`, `CodigoImpuesto`, `CodigoDescuento`, `TipoExoneracion`, `TipoDocReferencia`, `CodigoReferencia`. |
-| `factura/facturaXml.ts` | Generador de XML v4.4. `TipoDocumento`: `FE`, `TE`, `NC`, `ND`, `FEC` (factura de compra), `FEE` (factura de exportación). Cada uno declara su **variante de línea** porque los esquemas recortan la cola de forma distinta: la exportación va sin `BaseImponible`/`ImpuestoNeto` y admite `PartidaArancelaria`; la de compra no lleva `ImpuestoAsumidoEmisorFabrica` y exige el código de actividad del receptor. Emite el nodo `Exoneracion`. Exporta `fechaEmisionISO()`. |
+| `factura/types.ts` | Tipos de negocio: `Emisor`, `Receptor`, `LineaDetalle`, `Moneda`, `InformacionReferencia`, `Exoneracion` (por impuesto/línea, catálogo completo `TipoExoneracion` — D10, 2026-07-30), y los catálogos completos del XSD v4.4: `TipoIdentificacion`, `CondicionVenta`, `TipoMedioPago`, `CodigoImpuesto`, `CodigoDescuento`, `TipoDocReferencia`, `CodigoReferencia`. `FacturaInput.proveedorSistemas?` (D11, 2026-07-31 — cédula del proveedor de sistemas, default a la del emisor). |
+| `factura/facturaXml.ts` | Generador de XML v4.4. `TipoDocumento`: `FE`, `TE`, `NC`, `ND`, `FEC` (factura de compra), `FEE` (factura de exportación). Cada uno declara su **variante de línea** porque los esquemas recortan la cola de forma distinta: la exportación va sin `BaseImponible`/`ImpuestoNeto` y admite `PartidaArancelaria`; la de compra no lleva `ImpuestoAsumidoEmisorFabrica` y exige el código de actividad del receptor. Incluye `ProveedorSistemas` (encabezado, entre `Clave` y `CodigoActividadEmisor`) e `ImpuestoAsumidoEmisorFabrica` (por línea, fijo "0") — D11, 2026-07-31, campos obligatorios de v4.4 encontrados por rechazo real de Hacienda. Emite el nodo `Exoneracion`. Exporta `fechaEmisionISO()`. |
 | `factura/totales.ts` | Cálculo de totales, impuestos, descuentos y montos exonerados (`totalExonerado`). |
 | `reciboPago/reciboPagoXml.ts` | XML del Recibo Electrónico de Pago (REP, v4.4): estructura propia, sin CABYS ni ubicación, `InformacionReferencia` obligatoria. |
 | `mensajeReceptor/mensajeReceptor.ts` | XML de Mensaje Receptor (aceptar/rechazar/parcial). |
@@ -101,14 +104,20 @@ Usa el modelo `EnvioComprobante`.
 | `notificaciones` | `notificacionesService`, `notificarEvento()`, `providerRegistry` | Proveedores: `twilioSms`, `whatsappCloud`, `slack`, `teams`, `bitrix24`, `http` (patrón Strategy, `NotificationProvider`). |
 | `usuarios` | `usuarioService` | |
 | `webhooks` | `webhookService`, `emitirEvento()` | |
+| `plataforma` | `credencialPlataformaService`, `suscripcionService` | Panel interno de Savegre (Savegre Center) — cross-tenant, autenticación separada (`app.requierePlataforma`, nunca `request.user`). |
 
 ## Modelos Prisma (`prisma/schema.prisma`)
 
 `Tenant`, `Usuario`, `OAuthIdentity`, `PasswordReset`, `ApiKey`, `Emisor`,
-`Cliente`, `Comprobante`, `ConsecutivoEmisor`, `SesionHacienda`, `Borrador`,
+`Cliente`, `Comprobante`, `ConsecutivoEmisor` (contador legacy, usado hoy solo
+por `/recibo-pago/enviar`), `ConsecutivoContador` (D9, 2026-07-30 — contador
+atómico de consecutivo por emisor+sucursal+terminal+tipo, usado por
+`/comprobante/:tipo/enviar`), `SesionHacienda`, `Borrador`,
 `DocumentoRecibido`, `Buzon`, `SmtpSaliente`, `EnvioComprobante`, `Webhook`,
 `WebhookEntrega`, `NotificationChannel`, `NotificationMessage`, `Mensaje`,
-`RegistroAuditoria`, `RegistroLog`.
+`RegistroAuditoria`, `RegistroLog`, `Suscripcion`, `PagoSuscripcion` (L4/L5,
+2026-08-26 — suscripción y cobros de Savegre a un tenant, panel interno),
+`CredencialPlataforma` (L1 — credencial global, sin `tenantId`).
 
 ## Despliegue
 
@@ -128,6 +137,13 @@ La webapp vive en el repo **FactuWeb** y se despliega aparte
 |---|---|
 | `rotar-llave-maestra.mjs` | Recifra todo lo sellado con `FACTU_MASTER_KEY` al cambiar la llave (`LLAVE_VIEJA=… LLAVE_NUEVA=… node scripts/rotar-llave-maestra.mjs`). |
 | `rellenar-totales.mjs` | Backfill de `total`/`moneda` en comprobantes viejos, leyéndolos del XML firmado ya guardado (`--dry-run` disponible). |
+
+## Testing
+
+| Archivo | Qué es |
+|---|---|
+| `vitest.config.ts` | Config de Vitest (unitarios, `src/**/*.test.ts`); excluye `e2e/**` para no chocar con Playwright. |
+| `playwright.config.ts`, `e2e/plataforma.spec.ts` | E2E de API con Playwright (modo `request`, sin navegador — Factu no tiene UI). Levanta `buildServer()` en proceso, `PERSISTENCIA=memoria`. `npm run test:e2e`. Primer uso de Playwright en el ecosistema. |
 
 ## Documentación relacionada
 

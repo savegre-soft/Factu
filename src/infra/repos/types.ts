@@ -103,6 +103,8 @@ export interface UsuarioRecord {
 export interface TenantRepository {
   crear(input: { id: string; nombre: string }): Promise<TenantRecord>;
   buscar(id: string): Promise<TenantRecord | null>;
+  /** Todos los tenants (panel interno de Savegre, ver `plataforma`). */
+  listarTodos(): Promise<TenantRecord[]>;
 }
 
 /** Campos de un usuario que se pueden modificar tras crearlo. */
@@ -281,7 +283,7 @@ export interface WebhookEntregaRepository {
 
 // ---- Auditoría (acciones de negocio) ----
 
-export type ActorTipo = "usuario" | "apikey" | "sistema";
+export type ActorTipo = "usuario" | "apikey" | "sistema" | "plataforma";
 
 export interface AuditoriaRecord {
   id: string;
@@ -624,6 +626,7 @@ export interface ComprobanteRecord {
   moneda?: string | null;
   xmlFirmado?: string;
   respuestaXml?: string;
+  referenciaExterna?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -638,6 +641,7 @@ export interface NuevoComprobante {
   moneda?: string | null;
   xmlFirmado?: string;
   respuestaXml?: string;
+  referenciaExterna?: string;
 }
 
 /** Sesión con el IDP de Hacienda, con el TokenSet ya cifrado. */
@@ -750,7 +754,9 @@ export interface ComprobanteRepository {
   montosPorMoneda(cedulasEmisor: string[], rango?: RangoConsulta): Promise<MontoAgregado[]>;
   /**
    * Reserva el siguiente consecutivo de la serie y lo devuelve. Es atómico: dos
-   * emisiones simultáneas nunca reciben el mismo número.
+   * emisiones simultáneas nunca reciben el mismo número. Usado hoy solo por
+   * `/recibo-pago/enviar` (serie "REP") — la emisión de facturas/tiquetes/notas
+   * usa el contador atómico dedicado `ConsecutivoRepository` (D9) en su lugar.
    */
   reservarConsecutivo(serie: SerieConsecutivo): Promise<number>;
   /** Número que entregaría la próxima reserva, sin consumirlo (para la UI). */
@@ -764,6 +770,33 @@ export interface ComprobanteRepository {
    * si lo liberó.
    */
   liberarConsecutivo(serie: SerieConsecutivo, numero: number): Promise<boolean>;
+  /** Idempotencia: comprobante ya emitido para este emisor+referencia externa, si existe. */
+  buscarPorReferencia(cedulaEmisor: string, referenciaExterna: string): Promise<ComprobanteRecord | null>;
+  listarPorEmisor(cedula: string): Promise<ComprobanteRecord[]>;
+}
+
+// ---- Contador atómico de consecutivo (D9) ----
+
+export interface ConsecutivoRepository {
+  /** Devuelve el siguiente valor (atómico) para esta combinación. */
+  siguiente(
+    cedulaEmisor: string,
+    sucursal: number,
+    terminal: number,
+    tipo: string,
+  ): Promise<number>;
+  /**
+   * Registra que `valor` ya fue usado (el cliente lo mandó explícito), para
+   * que el contador nunca vuelva a asignar algo ≤ `valor`. No retrocede el
+   * contador si ya iba más adelante.
+   */
+  registrarSiUsado(
+    cedulaEmisor: string,
+    sucursal: number,
+    terminal: number,
+    tipo: string,
+    valor: number,
+  ): Promise<void>;
 }
 
 // ---- Envíos del comprobante al cliente (auditoría de correo saliente) ----
@@ -878,4 +911,115 @@ export interface DocumentoRecibidoRepository {
   guardarMensajeReceptor(id: string, mr: MensajeReceptorGuardado): Promise<void>;
   guardarEnvioMensajeReceptor(id: string, envio: MensajeReceptorEnviado): Promise<void>;
   eliminar(id: string): Promise<void>;
+}
+
+// ---- Plataforma: panel interno de Savegre (Savegre Center) ----
+//
+// Todo lo de esta sección es cross-tenant y se autentica con una
+// `CredencialPlataforma` (nunca con el JWT de un usuario ni con una `ApiKey`
+// de tenant) — ver `services/plataforma`, `plugins/auth.ts`
+// (`requierePlataforma`) y `routes/plataforma.ts`.
+
+export type EstadoSuscripcion = "activa" | "suspendida" | "cancelada";
+export type CicloCobro = "mensual" | "anual";
+export type TipoDescuento = "porcentaje" | "monto";
+
+export interface SuscripcionRecord {
+  id: string;
+  /** Tenant al que pertenece (relación 1:1). */
+  tenantId: string;
+  plan: string;
+  estado: EstadoSuscripcion;
+  /** Ej. "CRC", "USD". */
+  moneda: string;
+  ciclo: CicloCobro;
+  descuentoTipo: TipoDescuento | null;
+  descuentoValor: number | null;
+  descuentoRazon: string | null;
+  iniciaEn: Date;
+  renuevaEn: Date | null;
+  notas: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface DatosSuscripcion {
+  plan: string;
+  estado: EstadoSuscripcion;
+  moneda: string;
+  ciclo: CicloCobro;
+  descuentoTipo?: TipoDescuento | null;
+  descuentoValor?: number | null;
+  descuentoRazon?: string | null;
+  iniciaEn: Date;
+  renuevaEn?: Date | null;
+  notas?: string | null;
+}
+
+export interface SuscripcionRepository {
+  /** Crea o reemplaza la suscripción del tenant (1:1). */
+  upsert(tenantId: string, datos: DatosSuscripcion): Promise<SuscripcionRecord>;
+  buscarPorTenant(tenantId: string): Promise<SuscripcionRecord | null>;
+  /** Todas las suscripciones existentes (para la lista de tenants). */
+  listarTodas(): Promise<SuscripcionRecord[]>;
+}
+
+export interface PagoSuscripcionRecord {
+  id: string;
+  suscripcionId: string;
+  monto: number;
+  moneda: string;
+  /** Texto libre, ej. "transferencia", "tarjeta". */
+  metodo: string;
+  referencia: string | null;
+  notas: string | null;
+  pagadoEn: Date;
+  /** Quién lo registró: texto libre (staff de Savegre vía Center), no un Usuario de Factu. */
+  registradoPor: string | null;
+}
+
+export interface NuevoPagoSuscripcion {
+  id: string;
+  suscripcionId: string;
+  monto: number;
+  moneda: string;
+  metodo: string;
+  referencia?: string | null;
+  notas?: string | null;
+  registradoPor?: string | null;
+}
+
+export interface PagoSuscripcionRepository {
+  crear(input: NuevoPagoSuscripcion): Promise<PagoSuscripcionRecord>;
+  listarPorSuscripcion(suscripcionId: string): Promise<PagoSuscripcionRecord[]>;
+}
+
+export interface CredencialPlataformaRecord {
+  id: string;
+  label: string;
+  /** Prefijo público e indexado (permite el lookup sin escanear todo). */
+  keyId: string;
+  /** Hash del secreto (nunca el secreto en claro). */
+  secretHash: string;
+  lastUsedAt: Date | null;
+  expiresAt: Date | null;
+  revokedAt: Date | null;
+  createdAt: Date;
+}
+
+export interface NuevaCredencialPlataforma {
+  id: string;
+  label: string;
+  keyId: string;
+  secretHash: string;
+  expiresAt: Date | null;
+}
+
+export interface CredencialPlataformaRepository {
+  crear(input: NuevaCredencialPlataforma): Promise<CredencialPlataformaRecord>;
+  buscarPorId(id: string): Promise<CredencialPlataformaRecord | null>;
+  buscarPorKeyId(keyId: string): Promise<CredencialPlataformaRecord | null>;
+  listar(): Promise<CredencialPlataformaRecord[]>;
+  marcarUso(id: string): Promise<void>;
+  revocar(id: string): Promise<void>;
 }

@@ -10,6 +10,7 @@
 import { create } from "xmlbuilder2";
 import type {
   Emisor,
+  Exoneracion,
   FacturaInput,
   InformacionReferencia,
   MedioPago,
@@ -26,7 +27,6 @@ import {
   TipoExoneracion,
   TipoMedioPago,
 } from "./types.js";
-import type { Exoneracion } from "./types.js";
 
 /** Tipos de comprobante que comparten esta estructura de XML. */
 export enum TipoDocumento {
@@ -343,6 +343,10 @@ function addResumen(
 function addInformacionReferencia(root: XmlNode, refs: InformacionReferencia[]): void {
   for (const ref of refs) {
     const node = root.ele("InformacionReferencia");
+    // v4.4 (notaCreditoElectronica.xsd): el orden/nombres reales son
+    // TipoDocIR, (TipoDocRefOTRO opcional), Numero, FechaEmisionIR, Codigo,
+    // Razon — antes se emitía TipoDoc/FechaEmision (v4.3), rechazado por
+    // Hacienda ("One of 'TipoDocIR' is expected" / "'FechaEmisionIR'").
     node.ele("TipoDocIR").txt(ref.tipoDoc);
     if (ref.tipoDoc === TipoDocReferencia.Otro && ref.tipoDocOtro)
       node.ele("TipoDocRefOTRO").txt(descripcionOtro(ref.tipoDocOtro));

@@ -3,6 +3,7 @@ import { calcularLinea, calcularTotales, redondear } from "./totales.js";
 import {
   CodigoImpuesto,
   CondicionVenta,
+  TipoExoneracion,
   TipoIdentificacion,
   type FacturaInput,
   type LineaDetalle,
@@ -59,6 +60,68 @@ describe("calcularLinea", () => {
     expect(linea.subTotal).toBe(900);
     expect(linea.impuestoNeto).toBe(117); // 13% de 900
     expect(linea.montoTotalLinea).toBe(1017);
+  });
+
+  it("resta la exoneración del monto del impuesto (parcial)", () => {
+    const linea = calcularLinea(
+      {
+        codigoCabys: "8399000000000",
+        cantidad: 1,
+        unidadMedida: "Unid",
+        detalle: "Exonerado parcial",
+        precioUnitario: 1000,
+        impuestos: [
+          {
+            codigo: CodigoImpuesto.IVA,
+            codigoTarifa: "08",
+            tarifa: 13,
+            exoneracion: {
+              tipoDocumento: TipoExoneracion.ComprasAutorizadasDGT,
+              numeroDocumento: "DGT-123",
+              nombreInstitucion: "01",
+              fechaEmision: new Date("2026-01-01"),
+              tarifaExonerada: 6.5, // mitad de la tarifa (13%): exonera 65 de los 130 de IVA bruto
+            },
+          },
+        ],
+      },
+      1,
+    );
+
+    expect(linea.impuestos[0]!.monto).toBe(65); // 130 bruto - 65 exonerado
+    expect(linea.impuestoNeto).toBe(65);
+    expect(linea.montoTotalLinea).toBe(1065);
+  });
+
+  it("no deja el monto de impuesto en negativo si la exoneración supera el bruto", () => {
+    const linea = calcularLinea(
+      {
+        codigoCabys: "8399000000000",
+        cantidad: 1,
+        unidadMedida: "Unid",
+        detalle: "Exonerado total",
+        precioUnitario: 1000,
+        impuestos: [
+          {
+            codigo: CodigoImpuesto.IVA,
+            codigoTarifa: "08",
+            tarifa: 13,
+            exoneracion: {
+              tipoDocumento: TipoExoneracion.ComprasAutorizadasDGT,
+              numeroDocumento: "DGT-123",
+              nombreInstitucion: "01",
+              fechaEmision: new Date("2026-01-01"),
+              tarifaExonerada: 20, // supera la tarifa real (13%): el bruto es 130
+            },
+          },
+        ],
+      },
+      1,
+    );
+
+    expect(linea.impuestos[0]!.monto).toBe(0);
+    expect(linea.impuestoNeto).toBe(0);
+    expect(linea.montoTotalLinea).toBe(1000);
   });
 
   it("marca como no gravada una línea sin impuestos", () => {

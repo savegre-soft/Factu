@@ -80,8 +80,11 @@ export const datosFacturaSchema = z.object({
   sucursal: z.number().int().nonnegative().default(1),
   terminal: z.number().int().nonnegative().default(1),
   /**
-   * Número consecutivo. Si se omite, la API reserva el siguiente de la serie
-   * (emisor + sucursal + terminal + tipo); pasarlo explícitamente lo fuerza.
+   * Número consecutivo. Opcional desde D9: si se omite, `/comprobante/:tipo/enviar`
+   * lo asigna de forma atómica server-side (ver `consecutivoRepository`); pasarlo
+   * explícitamente lo fuerza (compatibilidad hacia atrás). `/factura/xml` (esta
+   * ruta, solo genera el XML sin persistir nada) sigue exigiéndolo explícito, ya
+   * que no tiene emisor real de donde resolverlo.
    */
   consecutivo: z.number().int().nonnegative().optional(),
   /**
@@ -89,7 +92,17 @@ export const datosFacturaSchema = z.object({
    * comprobante se emite igual y se transmite cuando el servicio vuelva.
    */
   situacion: z.nativeEnum(SituacionComprobante).optional(),
+  /**
+   * Idempotencia (reconciliación de RestroCloud, RF-58): id opaco del
+   * sistema externo. Si `/comprobante/:tipo/enviar` ya emitió algo con esta
+   * misma (cedulaEmisor, referenciaExterna), devuelve ese comprobante en vez
+   * de crear uno nuevo — protege contra reintentos duplicando un documento
+   * fiscal real. Sin efecto en `/factura/xml` (no persiste nada).
+   */
+  referenciaExterna: z.string().max(150).optional(),
   // Datos de la factura (hito 3)
+  /** Cédula del proveedor de sistemas (v4.4, obligatorio). Si se omite, se usa la del emisor. */
+  proveedorSistemas: z.string().max(20).optional(),
   codigoActividadEmisor: z.string(),
   codigoActividadReceptor: z.string().optional(),
   emisor: z.object({
@@ -140,6 +153,15 @@ export async function facturaRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(400).send({ error: "Entrada inválida", detalles: parsed.error.issues });
     }
     const b = parsed.data;
+    // Esta ruta solo genera el XML sin persistir nada — no hay emisor real del
+    // que resolver un consecutivo atómico (eso es `/comprobante/:tipo/enviar`),
+    // así que aquí sigue siendo obligatorio pese a ser opcional en el schema.
+    if (b.consecutivo === undefined) {
+      return reply.status(400).send({
+        error: "Entrada inválida",
+        detalles: [{ path: ["consecutivo"], message: "Obligatorio para generar el XML sin persistir" }],
+      });
+    }
 
     const { clave, consecutivo } = generarClave({
       cedulaEmisor: b.cedulaEmisor,

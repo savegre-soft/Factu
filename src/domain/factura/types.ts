@@ -283,13 +283,16 @@ export interface InformacionReferencia {
 export interface FacturaInput {
   /** Clave numérica de 50 dígitos (generada en el hito 1). */
   clave: string;
-  /**
-   * Cédula del proveedor del sistema de facturación (nodo ProveedorSistemas,
-   * obligatorio en v4.4). Si se omite, el generador usa la cédula del emisor.
-   */
-  proveedorSistemas?: string;
   /** Consecutivo de 20 dígitos (generado en el hito 1). */
   numeroConsecutivo: string;
+  /**
+   * Identificación (cédula) del proveedor de sistemas de facturación (campo
+   * obligatorio v4.4, todos los tipos de comprobante). Si se omite, se usa la
+   * cédula del propio emisor — caso "desarrollo propio o comprado a la
+   * medida" que la Resolución General MH-DGT-RES-0027-2024 contempla
+   * explícitamente para no exigir un tercero cuando no lo hay.
+   */
+  proveedorSistemas?: string;
   /** Código de actividad económica del emisor (6 dígitos). */
   codigoActividadEmisor: string;
   codigoActividadReceptor?: string;
